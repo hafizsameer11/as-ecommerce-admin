@@ -15,7 +15,7 @@ export function AdminTopbar({ onOpenPalette }: Props) {
   const { name, email, role, signOut } = useAdmin();
   const hydrateActivity = useActivity((s) => s.hydrate);
   const unread = useActivity((s) => s.entries.length);
-  const roleMeta = ADMIN_ROLES.find((r) => r.id === role)!;
+  const roleMeta = ADMIN_ROLES.find((r) => r.id === role) ?? ADMIN_ROLES[0];
 
   useEffect(() => {
     void hydrateActivity();

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { ApiError } from "@/lib/api/client";
+import { ApiError, loadTokens, saveTokens } from "@/lib/api/client";
 import { adminAuthApi, type AdminProfile } from "@/lib/api/auth";
 
 export type AdminRole =
@@ -44,7 +44,6 @@ type State = {
   signIn: (email: string, password?: string) => Promise<SignInResult>;
   completeTwoFactor: (challenge: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
-  setRole: (r: AdminRole) => void;
   setDensity: (d: Density) => void;
   toggleSidebar: () => void;
   bootstrap: () => Promise<void>;
@@ -90,18 +89,23 @@ export const useAdmin = create<State>()(
         try {
           await adminAuthApi.logout();
         } catch {
-          /* clear local anyway */
+          saveTokens(null);
         }
-        set({ isSignedIn: false, email: null, permissions: [] });
+        set({ isSignedIn: false, email: null, name: "Admin", role: "super_admin", permissions: [] });
       },
-      setRole: (role) => set({ role }),
       setDensity: (density) => set({ density }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       bootstrap: async () => {
         try {
+          const tokens = loadTokens();
+          if (!tokens?.accessToken && !tokens?.refreshToken) {
+            set({ isSignedIn: false, email: null, permissions: [] });
+            return;
+          }
           const me = await adminAuthApi.me();
           get().applyProfile(me);
         } catch {
+          saveTokens(null);
           set({ isSignedIn: false, email: null, permissions: [] });
         } finally {
           set({ sessionReady: true });

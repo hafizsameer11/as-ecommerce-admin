@@ -25,9 +25,34 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_BASE = "http://localhost:4000";
+const TOKEN_KEY = "asl-admin-tokens";
+
+export type TokenPair = { accessToken: string; refreshToken: string };
 
 export function apiBaseUrl() {
   return (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || DEFAULT_BASE;
+}
+
+export function loadTokens(): TokenPair | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as TokenPair;
+    if (!parsed?.accessToken || !parsed?.refreshToken) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveTokens(tokens: TokenPair | null) {
+  if (typeof window === "undefined") return;
+  if (!tokens) {
+    localStorage.removeItem(TOKEN_KEY);
+    return;
+  }
+  localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
 }
 
 export type ApiRequestOptions = {
@@ -37,11 +62,15 @@ export type ApiRequestOptions = {
   rawBody?: BodyInit | null;
   idempotencyKey?: string;
   signal?: AbortSignal;
+  /** Skip Authorization (login / public) */
+  skipAuth?: boolean;
+  /** Internal: skip 401 refresh retry */
+  _authRetry?: boolean;
 };
 
 type UnauthorizedHandler = () => void;
 let unauthorizedHandler: UnauthorizedHandler | null = null;
-let refreshInFlight: Promise<boolean> | null = null;
+let refreshInFlight: Promise<TokenPair | null> | null = null;
 
 export function setApiUnauthorizedHandler(handler: UnauthorizedHandler | null) {
   unauthorizedHandler = handler;
@@ -56,32 +85,64 @@ function parseJson(text: string): unknown {
   }
 }
 
-async function refreshAdminSession(): Promise<boolean> {
+function isAuthPath(path: string) {
+  return (
+    path.startsWith("/admin/auth/login") ||
+    path.startsWith("/admin/auth/refresh") ||
+    path.startsWith("/admin/auth/logout") ||
+    path.startsWith("/admin/auth/bootstrap") ||
+    path.startsWith("/admin/auth/invite/accept")
+  );
+}
+
+async function refreshAdminSession(): Promise<TokenPair | null> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = (async () => {
+    const current = loadTokens();
     try {
       const url = `${apiBaseUrl()}/api/v1/admin/auth/refresh`;
       const res = await fetch(url, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify(current?.refreshToken ? { refreshToken: current.refreshToken } : {}),
       });
-      return res.ok;
+      if (!res.ok) {
+        saveTokens(null);
+        return null;
+      }
+      const json = parseJson(await res.text());
+      const data =
+        json && typeof json === "object" && json !== null && "data" in json
+          ? (json as { data: TokenPair }).data
+          : (json as TokenPair);
+      if (!data?.accessToken || !data?.refreshToken) {
+        saveTokens(null);
+        return null;
+      }
+      saveTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+      return data;
     } catch {
-      return false;
-    } finally {
-      refreshInFlight = null;
+      saveTokens(null);
+      return null;
     }
-  })();
+  })().finally(() => {
+    refreshInFlight = null;
+  });
   return refreshInFlight;
 }
 
-function isAuthPath(path: string) {
+function authErrorCode(json: unknown): string {
+  return (json as ApiErrorBody | null)?.error?.code ?? "";
+}
+
+function shouldRefresh(status: number, code: string, path: string, authRetry?: boolean) {
+  if (authRetry || status !== 401 || isAuthPath(path)) return false;
   return (
-    path.startsWith("/admin/auth/login") ||
-    path.startsWith("/admin/auth/refresh") ||
-    path.startsWith("/admin/auth/logout")
+    code === "TOKEN_INVALID" ||
+    code === "UNAUTHENTICATED" ||
+    code === "UNAUTHORIZED" ||
+    code === "AUTH_REQUIRED"
   );
 }
 
@@ -93,6 +154,11 @@ async function fetchApi(
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
 
   if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
+
+  if (!opts.skipAuth) {
+    const tokens = loadTokens();
+    if (tokens?.accessToken) headers.Authorization = `Bearer ${tokens.accessToken}`;
+  }
 
   let body: BodyInit | undefined;
   if (opts.rawBody !== undefined) {
@@ -114,17 +180,15 @@ async function fetchApi(
   let text = await res.text();
   let json = parseJson(text);
 
-  if (res.status === 401 && !isAuthPath(path)) {
-    const code = (json as ApiErrorBody | null)?.error?.code ?? "";
-    if (code === "TOKEN_INVALID" || code === "UNAUTHORIZED" || code === "AUTH_REQUIRED") {
-      const refreshed = await refreshAdminSession();
-      if (refreshed) {
-        res = await fetch(url, init);
-        text = await res.text();
-        json = parseJson(text);
-      } else {
-        unauthorizedHandler?.();
-      }
+  if (shouldRefresh(res.status, authErrorCode(json), path, opts._authRetry)) {
+    const refreshed = await refreshAdminSession();
+    if (refreshed?.accessToken) {
+      const retryHeaders = { ...headers, Authorization: `Bearer ${refreshed.accessToken}` };
+      res = await fetch(url, { ...init, headers: retryHeaders });
+      text = await res.text();
+      json = parseJson(text);
+    } else {
+      unauthorizedHandler?.();
     }
   }
 

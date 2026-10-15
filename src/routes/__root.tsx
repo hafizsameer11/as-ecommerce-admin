@@ -145,6 +145,7 @@ function RootComponent() {
     void import("@/lib/admin-role-store").then(({ useAdmin }) => {
       void import("@/lib/api/client").then(({ setApiUnauthorizedHandler }) => {
         setApiUnauthorizedHandler(() => {
+          void import("@/lib/api/client").then(({ saveTokens }) => saveTokens(null));
           void useAdmin.getState().signOut();
           window.location.assign("/login");
         });
