@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
 import { ADMIN_ROLES, useAdmin } from "@/lib/admin-role-store";
 import { Lock } from "lucide-react";
-import wordmarkWhite from "@/assets/ASL_wordmark_white.png.asset.json";
+import wordmarkWhite from "@/assets/ASL_wordmark_white.png";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -44,7 +44,7 @@ function AdminLoginPage() {
     <div className="min-h-screen w-full grid lg:grid-cols-2 bg-[#f7f5ef]">
       <div className="hidden lg:flex flex-col justify-between p-12 bg-ink text-white relative overflow-hidden">
         <div className="relative z-10">
-          <img src={wordmarkWhite.url} alt="ASL ORIGINALS" className="h-[18px] w-auto object-contain" />
+          <img src={wordmarkWhite} alt="ASL ORIGINALS" className="h-[18px] w-auto object-contain" />
           <div className="text-[10px] tracking-[0.4em] text-white/60 mt-1">ADMIN</div>
         </div>
         <div className="relative z-10 max-w-md">
