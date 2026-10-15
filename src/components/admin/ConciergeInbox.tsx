@@ -258,6 +258,7 @@ export function ConciergeInbox() {
           <RequestDetail
             key={selected.id}
             req={selected}
+            agentNames={agentNames}
             onAssign={(a) => assign(selected.id, a)}
             onStatus={(s) => setStatus(selected.id, s)}
             noteDraft={noteDraft}
@@ -276,11 +277,12 @@ export function ConciergeInbox() {
 }
 
 function RequestDetail({
-  req, onAssign, onStatus,
+  req, agentNames, onAssign, onStatus,
   noteDraft, setNoteDraft, submitNote,
   quoteDraft, setQuoteDraft, submitQuote,
 }: {
   req: ConciergeRequest;
+  agentNames: string[];
   onAssign: (a: string) => void;
   onStatus: (s: ConciergeStatus) => void;
   noteDraft: string; setNoteDraft: (v: string) => void; submitNote: () => void;
