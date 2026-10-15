@@ -1,4 +1,7 @@
 import { create } from "zustand";
+import { toast } from "sonner";
+import { ApiError } from "@/lib/api/client";
+import { teamAdminApi } from "@/lib/api/platform";
 import { conciergeAdminApi, koboToNaira, nairaToKobo, type AdminConciergeRow } from "@/lib/api/loyalty";
 
 export type ConciergeStatus =
@@ -45,8 +48,6 @@ export type ConciergeRequest = {
   quote?: { amount: number; deposit: number; expiresAt: number } | null;
   timeline: ConciergeTimelineEntry[];
 };
-
-const AGENTS = ["Ada O.", "Kunle B.", "Zara M.", "Ivy R."];
 
 const STATUS_FROM_API: Record<string, ConciergeStatus> = {
   new: "New",
@@ -107,7 +108,7 @@ function mapRow(r: AdminConciergeRow): ConciergeRequest {
   const status = STATUS_FROM_API[statusKey] ?? ((r.statusLabel as ConciergeStatus) || "New");
   const quote = r.quote
     ? {
-        amount: koboToNaira(r.quote.amount ?? 0),
+        amount: koboToNaira(r.quote.total ?? r.quote.amount ?? 0),
         deposit: koboToNaira(r.quote.deposit ?? 0),
         expiresAt: r.quote.expiresAt ? new Date(r.quote.expiresAt).getTime() : Date.now() + 72 * 3_600_000,
       }
@@ -148,8 +149,11 @@ function mapRow(r: AdminConciergeRow): ConciergeRequest {
   };
 }
 
+export type ConciergeAgent = { id: string; name: string };
+
 type State = {
   requests: ConciergeRequest[];
+  agents: ConciergeAgent[];
   hydrated: boolean;
   hydrate: () => Promise<void>;
   assign: (id: string, agent: string) => Promise<void>;
@@ -165,11 +169,20 @@ function findApiId(s: State, id: string) {
 
 export const useConciergeRequests = create<State>()((set, get) => ({
   requests: [],
+  agents: [],
   hydrated: false,
   hydrate: async () => {
     try {
-      const { data } = await conciergeAdminApi.listRequests();
-      set({ requests: data.map(mapRow), hydrated: true });
+      const [{ data }, membersRaw] = await Promise.all([
+        conciergeAdminApi.listRequests(),
+        teamAdminApi.members().catch(() => []),
+      ]);
+      const members = (Array.isArray(membersRaw) ? membersRaw : []) as Record<string, unknown>[];
+      const agents: ConciergeAgent[] = members
+        .filter((m) => m.status === "active" || m.status === undefined)
+        .map((m) => ({ id: String(m.id), name: String(m.name ?? "") }))
+        .filter((a) => a.name);
+      set({ requests: data.map(mapRow), agents, hydrated: true });
     } catch (err) {
       console.warn("[concierge] hydrate failed", err);
       set({ hydrated: true });
@@ -177,23 +190,34 @@ export const useConciergeRequests = create<State>()((set, get) => ({
   },
   assign: async (id, agent) => {
     const apiId = findApiId(get(), id);
-    // Admin UI uses display names; API expects adminId — keep optimistic local assign.
+    const adminId = agent ? get().agents.find((a) => a.name === agent)?.id ?? null : null;
+    const prev = get().requests.find((r) => r.id === id || r.apiId === id);
     set((s) => ({
       requests: s.requests.map((r) =>
         r.id === id || r.apiId === id
           ? {
               ...r,
-              assignee: agent,
+              assignee: agent || null,
               updatedAt: Date.now(),
-              timeline: [...r.timeline, { at: Date.now(), by: "You", kind: "note", text: `Assigned to ${agent}.` }],
+              timeline: agent
+                ? [...r.timeline, { at: Date.now(), by: "You", kind: "note", text: `Assigned to ${agent}.` }]
+                : r.timeline,
             }
           : r
       ),
     }));
     try {
-      await conciergeAdminApi.assign(apiId, null);
+      await conciergeAdminApi.assign(apiId, adminId);
     } catch (err) {
       console.warn("[concierge] assign sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not assign agent");
+      if (prev) {
+        set((s) => ({
+          requests: s.requests.map((r) => (r.id === id || r.apiId === id ? prev : r)),
+        }));
+      } else {
+        await get().hydrate();
+      }
     }
   },
   setStatus: async (id, status) => {
@@ -282,4 +306,5 @@ export const useConciergeRequests = create<State>()((set, get) => ({
   },
 }));
 
-export const AGENT_LIST = AGENTS;
+/** @deprecated Use `useConciergeRequests(s => s.agents)` */
+export const AGENT_LIST: string[] = [];

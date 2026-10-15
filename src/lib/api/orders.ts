@@ -108,6 +108,29 @@ export const ordersAdminApi = {
       body: { status },
     }),
 
+  fulfill: (id: string, body: Record<string, unknown> = {}) =>
+    apiRequest(`/admin/orders/${encodeURIComponent(id)}/fulfil`, { method: "POST", body }),
+
+  refund: (id: string, body: Record<string, unknown> = {}) =>
+    apiRequest(`/admin/orders/${encodeURIComponent(id)}/refund`, { method: "POST", body }),
+
+  cancel: (id: string, body: { reason: string; refundTo?: string }) =>
+    apiRequest(`/admin/orders/${encodeURIComponent(id)}/cancel`, { method: "POST", body }),
+
+  markPaid: (id: string) =>
+    apiRequest(`/admin/orders/${encodeURIComponent(id)}/mark-paid`, { method: "POST", body: {} }),
+
+  addOrderNote: (id: string, body: string) =>
+    apiRequest(`/admin/orders/${encodeURIComponent(id)}/notes`, { method: "POST", body: { body } }),
+
+  removeOrderNote: (id: string, noteId: string) =>
+    apiRequest(`/admin/orders/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`, {
+      method: "DELETE",
+    }),
+
+  emailInvoice: (id: string) =>
+    apiRequest(`/admin/orders/${encodeURIComponent(id)}/email-invoice`, { method: "POST", body: {} }),
+
   listReturns: (query: { status?: string; q?: string; page?: number; pageSize?: number; tab?: string } = {}) =>
     apiRequestWithMeta<AdminReturnRow[]>(`/admin/returns${qs({ pageSize: 100, ...query })}`),
 
@@ -136,10 +159,10 @@ export const ordersAdminApi = {
   setCustomerTier: (id: string, tier: string) =>
     apiRequest(`/admin/customers/${encodeURIComponent(id)}/tier`, { method: "PATCH", body: { tier } }),
 
-  setCustomerMarketing: (id: string, marketingOptIn: boolean) =>
+  setCustomerMarketing: (id: string, optIn: boolean) =>
     apiRequest(`/admin/customers/${encodeURIComponent(id)}/marketing`, {
       method: "POST",
-      body: { marketingOptIn },
+      body: { optIn },
     }),
 
   addCustomerNote: (id: string, body: string) =>
@@ -158,10 +181,15 @@ export const ordersAdminApi = {
       method: "DELETE",
     }),
 
-  adjustCustomerWallet: (id: string, amount: number, reason: string) =>
+  adjustCustomerWallet: (
+    id: string,
+    amountKobo: number,
+    kind: "credit" | "debit",
+    note: string,
+  ) =>
     apiRequest(`/admin/customers/${encodeURIComponent(id)}/wallet-adjust`, {
       method: "POST",
-      body: { amount: nairaToKobo(amount), reason },
+      body: { amount: amountKobo, kind, note },
     }),
 
   removeCustomer: (id: string) =>

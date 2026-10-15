@@ -60,25 +60,25 @@ function mapAnn(a: Record<string, unknown>): Announcement {
   };
 }
 
-function toBody(a: Partial<Announcement>) {
-  return {
-    title: a.title,
-    message: a.message,
-    emoji: a.emoji ?? null,
-    ctaLabel: a.ctaLabel ?? null,
-    ctaHref: a.ctaHref ?? null,
-    style: a.style,
-    bg: a.bg,
-    fg: a.fg,
-    placement: a.placement,
-    audience: a.audience,
-    device: a.device,
-    dismissible: a.dismissible,
-    priority: a.priority,
-    startsAt: a.startsAt ?? null,
-    endsAt: a.endsAt ?? null,
-    status: a.status,
-  };
+function toBody(patch: Partial<Announcement>) {
+  const body: Record<string, unknown> = {};
+  if ("title" in patch) body.title = patch.title;
+  if ("message" in patch) body.message = patch.message;
+  if ("emoji" in patch) body.emoji = patch.emoji ?? null;
+  if ("ctaLabel" in patch) body.ctaLabel = patch.ctaLabel ?? null;
+  if ("ctaHref" in patch) body.ctaHref = patch.ctaHref ?? null;
+  if ("style" in patch) body.style = patch.style;
+  if ("bg" in patch) body.bg = patch.bg;
+  if ("fg" in patch) body.fg = patch.fg;
+  if ("placement" in patch) body.placement = patch.placement;
+  if ("audience" in patch) body.audience = patch.audience;
+  if ("device" in patch) body.device = patch.device;
+  if ("dismissible" in patch) body.dismissible = patch.dismissible;
+  if ("priority" in patch) body.priority = patch.priority;
+  if ("startsAt" in patch) body.startsAt = patch.startsAt ?? null;
+  if ("endsAt" in patch) body.endsAt = patch.endsAt ?? null;
+  if ("status" in patch) body.status = patch.status;
+  return body;
 }
 
 type State = {

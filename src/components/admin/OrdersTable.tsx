@@ -50,8 +50,14 @@ function mapRow(o: AdminOrderRow): AdminOrderView {
   };
 }
 
+type OrderListMeta = {
+  kpis?: Record<string, unknown>;
+  tabs?: Record<string, number>;
+};
+
 export function OrdersTable() {
   const [orders, setOrders] = useState<AdminOrderView[]>([]);
+  const [listMeta, setListMeta] = useState<OrderListMeta>({});
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<(typeof STATUS_TABS)[number]>("All");
   const [sortKey, setSortKey] = useState<SortKey>("date");
@@ -66,8 +72,9 @@ export function OrdersTable() {
 
   const reload = async () => {
     try {
-      const { data } = await ordersAdminApi.list();
+      const { data, meta } = await ordersAdminApi.list();
       setOrders(data.map(mapRow));
+      if (meta) setListMeta({ kpis: meta.kpis as Record<string, unknown>, tabs: meta.tabs as Record<string, number> });
     } catch (err) {
       console.warn("[admin-orders]", err);
       toast.error(err instanceof Error ? err.message : "Failed to load orders");
@@ -175,11 +182,26 @@ export function OrdersTable() {
     void updateStatus(ids, status);
     setSelected(new Set());
   };
-  const bulkCancel = () => {
+  const bulkCancel = async () => {
     const ids = [...selected];
-    if (!confirm(`Cancel ${ids.length} order(s)? This can't be undone.`)) return;
-    void updateStatus(ids, "Cancelled");
-    setSelected(new Set());
+    if (!confirm(`Cancel ${ids.length} order(s)? Refunds may apply.`)) return;
+    try {
+      await Promise.all(
+        ids.map((id) => {
+          const row = orders.find((o) => o.id === id);
+          return ordersAdminApi.cancel(row?.apiId ?? id, {
+            reason: "Cancelled by admin (bulk)",
+            refundTo: "original",
+          });
+        }),
+      );
+      setOrders((xs) => xs.map((o) => (ids.includes(o.id) ? { ...o, status: "Cancelled" as OrderStatus } : o)));
+      toast.success(`Cancelled ${ids.length} order(s)`);
+      setSelected(new Set());
+      await reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bulk cancel failed");
+    }
   };
   const bulkPrint = () => {
     toast.success(`Packing slips queued for ${selected.size} order(s)`);
@@ -240,10 +262,32 @@ export function OrdersTable() {
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         {[
-          { label: "Open orders", value: (counts["Processing"] ?? 0) + (counts["Shipped"] ?? 0), tone: "amber" as const },
-          { label: "Unfulfilled", value: counts["Processing"] ?? 0, tone: "blue" as const },
-          { label: "Awaiting payment", value: 3, tone: "purple" as const },
-          { label: "This month revenue", value: naira(orders.reduce((n, o) => n + o.total, 0)), tone: "gold" as const },
+          {
+            label: "Open orders",
+            value:
+              Number(listMeta.kpis?.openOrders ?? listMeta.kpis?.open) ||
+              (counts["Processing"] ?? 0) + (counts["Shipped"] ?? 0),
+            tone: "amber" as const,
+          },
+          {
+            label: "Unfulfilled",
+            value: Number(listMeta.kpis?.unfulfilled ?? counts["Processing"] ?? 0),
+            tone: "blue" as const,
+          },
+          {
+            label: "Awaiting payment",
+            value:
+              Number(listMeta.tabs?.awaiting_payment ?? listMeta.kpis?.awaiting_payment ?? 0),
+            tone: "purple" as const,
+          },
+          {
+            label: "This month revenue",
+            value: naira(
+              Number(listMeta.kpis?.revenue30d ?? 0) ||
+                orders.reduce((n, o) => n + o.total, 0),
+            ),
+            tone: "gold" as const,
+          },
         ].map((k) => (
           <Card key={k.label} className="!p-4">
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{k.label}</div>

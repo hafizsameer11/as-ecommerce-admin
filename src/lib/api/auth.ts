@@ -25,6 +25,12 @@ export const adminAuthApi = {
   login: (email: string, password: string) =>
     apiRequest<AdminAuthResponse>("/admin/auth/login", { method: "POST", body: { email, password } }),
 
+  login2fa: (challenge: string, code: string) =>
+    apiRequest<AdminAuthResponse>("/admin/auth/login/2fa", {
+      method: "POST",
+      body: { challenge, code },
+    }),
+
   logout: () => apiRequest<{ signedOut: boolean }>("/admin/auth/logout", { method: "POST" }),
 
   refresh: () => apiRequest<{ accessToken: string; refreshToken: string }>("/admin/auth/refresh", { method: "POST", body: {} }),

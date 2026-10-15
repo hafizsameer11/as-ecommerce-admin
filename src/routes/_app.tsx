@@ -12,7 +12,8 @@ export const Route = createFileRoute("/_app")({
   }),
   beforeLoad: () => {
     if (typeof window === "undefined") return;
-    if (!useAdmin.getState().isSignedIn) {
+    const { sessionReady, isSignedIn } = useAdmin.getState();
+    if (sessionReady && !isSignedIn) {
       throw redirect({ to: "/login" });
     }
   },
@@ -20,6 +21,16 @@ export const Route = createFileRoute("/_app")({
 });
 
 function AdminLayout() {
+  const sessionReady = useAdmin((s) => s.sessionReady);
+  const isSignedIn = useAdmin((s) => s.isSignedIn);
+
+  if (!sessionReady) {
+    return <div className="min-h-screen bg-[#f7f5ef]" aria-busy="true" />;
+  }
+  if (!isSignedIn) {
+    return null;
+  }
+
   return (
     <AdminShell>
       <Outlet />

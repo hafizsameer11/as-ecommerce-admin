@@ -15,6 +15,7 @@ export type OrderItem = {
   qty: number;
   price: number;
   image: string;
+  sku?: string;
 };
 
 export type Order = {

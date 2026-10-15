@@ -6,7 +6,7 @@ import {
 import { PageHeader } from "./AdminShell";
 import { Card, Chip, StatusPill, naira, Empty } from "./ui";
 import {
-  useConciergeRequests, AGENT_LIST,
+  useConciergeRequests,
   type ConciergeRequest, type ConciergeStatus, type ConciergePriority,
 } from "@/lib/concierge-requests-store";
 
@@ -43,6 +43,8 @@ function priorityTone(p: ConciergePriority) {
 
 export function ConciergeInbox() {
   const requests = useConciergeRequests((s) => s.requests);
+  const agents = useConciergeRequests((s) => s.agents);
+  const agentNames = agents.map((a) => a.name);
   const hydrate = useConciergeRequests((s) => s.hydrate);
   const assign = useConciergeRequests((s) => s.assign);
   const setStatus = useConciergeRequests((s) => s.setStatus);
@@ -203,7 +205,7 @@ export function ConciergeInbox() {
         >
           <option value="all">All agents</option>
           <option value="unassigned">Unassigned</option>
-          {AGENT_LIST.map((a) => <option key={a} value={a}>{a}</option>)}
+          {agentNames.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       </div>
 
@@ -333,11 +335,11 @@ function RequestDetail({
           <User className="h-3.5 w-3.5 text-muted-foreground" />
           <select
             value={req.assignee ?? ""}
-            onChange={(e) => onAssign(e.target.value || AGENT_LIST[0])}
+            onChange={(e) => onAssign(e.target.value)}
             className="h-8 px-2 rounded-md border border-black/10 text-[12.5px] bg-white"
           >
             <option value="">Unassigned</option>
-            {AGENT_LIST.map((a) => <option key={a} value={a}>{a}</option>)}
+            {agentNames.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
         <div className="flex items-center gap-1.5">

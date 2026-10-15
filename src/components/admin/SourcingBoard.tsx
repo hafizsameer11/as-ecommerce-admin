@@ -7,7 +7,6 @@ import {
   type ConciergeRequest,
   type ConciergeStatus,
   type ConciergePriority,
-  AGENT_LIST,
 } from "@/lib/concierge-requests-store";
 import { AlertTriangle, Clock, Crown, Search, User2, GripVertical } from "lucide-react";
 
@@ -36,6 +35,7 @@ const priTone: Record<ConciergePriority, "red" | "amber" | "slate"> = {
 
 export function SourcingBoard() {
   const requests = useConciergeRequests((s) => s.requests);
+  const agentNames = useConciergeRequests((s) => s.agents.map((a) => a.name));
   const hydrate = useConciergeRequests((s) => s.hydrate);
   const setStatus = useConciergeRequests((s) => s.setStatus);
 
@@ -129,7 +129,7 @@ export function SourcingBoard() {
         >
           <option value="all">All agents</option>
           <option value="Unassigned">Unassigned</option>
-          {AGENT_LIST.map((a) => <option key={a} value={a}>{a}</option>)}
+          {agentNames.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
         <select
           value={priority}

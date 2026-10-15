@@ -142,7 +142,15 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
-    void import("@/lib/admin-role-store").then(({ useAdmin }) => useAdmin.getState().bootstrap());
+    void import("@/lib/admin-role-store").then(({ useAdmin }) => {
+      void import("@/lib/api/client").then(({ setApiUnauthorizedHandler }) => {
+        setApiUnauthorizedHandler(() => {
+          void useAdmin.getState().signOut();
+          window.location.assign("/login");
+        });
+      });
+      void useAdmin.getState().bootstrap();
+    });
   }, []);
 
   return (

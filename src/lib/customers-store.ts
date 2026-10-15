@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { ordersAdminApi, koboToNaira, type AdminCustomerRow } from "@/lib/api/orders";
+import { ordersAdminApi, koboToNaira, nairaToKobo, type AdminCustomerRow } from "@/lib/api/orders";
+import { ApiError } from "@/lib/api/client";
+import { toast } from "sonner";
 
 export type CustomerTier = "Signature" | "Gold" | "Silver" | "Standard";
 export type CustomerStatus = "active" | "vip" | "flagged" | "blocked";
@@ -146,6 +148,7 @@ export const useCustomers = create<State>()((set, get) => ({
       await ordersAdminApi.setCustomerMarketing(id, next);
     } catch (err) {
       console.warn("[customers] marketing sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not update marketing preference");
       await get().hydrate();
     }
   },
@@ -217,10 +220,13 @@ export const useCustomers = create<State>()((set, get) => ({
       ),
     }));
     try {
-      await ordersAdminApi.adjustCustomerWallet(id, delta, "Admin adjustment");
+      const kind = delta >= 0 ? "credit" : "debit";
+      const amountKobo = nairaToKobo(Math.abs(delta));
+      await ordersAdminApi.adjustCustomerWallet(id, amountKobo, kind, "Admin adjustment");
       await get().hydrate();
     } catch (err) {
       console.warn("[customers] wallet sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Wallet adjustment failed");
       await get().hydrate();
     }
   },

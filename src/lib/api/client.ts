@@ -39,7 +39,56 @@ export type ApiRequestOptions = {
   signal?: AbortSignal;
 };
 
-export async function apiRequest<T>(path: string, opts: ApiRequestOptions = {}): Promise<T> {
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
+
+export function setApiUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  unauthorizedHandler = handler;
+}
+
+function parseJson(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+async function refreshAdminSession(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const url = `${apiBaseUrl()}/api/v1/admin/auth/refresh`;
+      const res = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+function isAuthPath(path: string) {
+  return (
+    path.startsWith("/admin/auth/login") ||
+    path.startsWith("/admin/auth/refresh") ||
+    path.startsWith("/admin/auth/logout")
+  );
+}
+
+async function fetchApi(
+  path: string,
+  opts: ApiRequestOptions,
+): Promise<{ res: Response; text: string; json: unknown }> {
   const url = `${apiBaseUrl()}/api/v1${path.startsWith("/") ? path : `/${path}`}`;
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
 
@@ -53,31 +102,44 @@ export async function apiRequest<T>(path: string, opts: ApiRequestOptions = {}):
     body = JSON.stringify(opts.body);
   }
 
-  const res = await fetch(url, {
+  const init: RequestInit = {
     method: opts.method ?? (opts.body !== undefined || opts.rawBody !== undefined ? "POST" : "GET"),
     headers,
     body,
     credentials: "include",
     signal: opts.signal,
-  });
+  };
 
-  if (res.status === 204) return undefined as T;
+  let res = await fetch(url, init);
+  let text = await res.text();
+  let json = parseJson(text);
 
-  const text = await res.text();
-  let json: unknown = null;
-  if (text) {
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = null;
+  if (res.status === 401 && !isAuthPath(path)) {
+    const code = (json as ApiErrorBody | null)?.error?.code ?? "";
+    if (code === "TOKEN_INVALID" || code === "UNAUTHORIZED" || code === "AUTH_REQUIRED") {
+      const refreshed = await refreshAdminSession();
+      if (refreshed) {
+        res = await fetch(url, init);
+        text = await res.text();
+        json = parseJson(text);
+      } else {
+        unauthorizedHandler?.();
+      }
     }
   }
+
+  return { res, text, json };
+}
+
+export async function apiRequest<T>(path: string, opts: ApiRequestOptions = {}): Promise<T> {
+  const { res, json } = await fetchApi(path, opts);
+
+  if (res.status === 204) return undefined as T;
 
   if (!res.ok) {
     throw new ApiError(res.status, json as ApiErrorBody | null, res.statusText || "Request failed");
   }
 
-  // Backend success envelope: { data: T, meta? }
   if (json && typeof json === "object" && json !== null && "data" in json) {
     return (json as { data: T }).data;
   }
@@ -86,40 +148,11 @@ export async function apiRequest<T>(path: string, opts: ApiRequestOptions = {}):
 
 export async function apiRequestWithMeta<T>(
   path: string,
-  opts: ApiRequestOptions = {}
+  opts: ApiRequestOptions = {},
 ): Promise<{ data: T; meta?: Record<string, unknown> }> {
-  const url = `${apiBaseUrl()}/api/v1${path.startsWith("/") ? path : `/${path}`}`;
-  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
-
-  if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
-
-  let body: BodyInit | undefined;
-  if (opts.rawBody !== undefined) {
-    body = opts.rawBody ?? undefined;
-  } else if (opts.body !== undefined) {
-    headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
-    body = JSON.stringify(opts.body);
-  }
-
-  const res = await fetch(url, {
-    method: opts.method ?? (opts.body !== undefined || opts.rawBody !== undefined ? "POST" : "GET"),
-    headers,
-    body,
-    credentials: "include",
-    signal: opts.signal,
-  });
+  const { res, json } = await fetchApi(path, opts);
 
   if (res.status === 204) return { data: undefined as T };
-
-  const text = await res.text();
-  let json: unknown = null;
-  if (text) {
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = null;
-    }
-  }
 
   if (!res.ok) {
     throw new ApiError(res.status, json as ApiErrorBody | null, res.statusText || "Request failed");

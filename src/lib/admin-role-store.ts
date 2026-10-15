@@ -28,15 +28,21 @@ export const ADMIN_ROLES: { id: AdminRole; label: string; short: string }[] = [
 
 export type Density = "comfortable" | "cozy" | "compact";
 
+export type SignInResult =
+  | { status: "signed_in" }
+  | { status: "two_factor"; challenge: string };
+
 type State = {
   isSignedIn: boolean;
+  sessionReady: boolean;
   email: string | null;
   name: string;
   role: AdminRole;
   density: Density;
   sidebarCollapsed: boolean;
   permissions: string[];
-  signIn: (email: string, password?: string) => Promise<void>;
+  signIn: (email: string, password?: string) => Promise<SignInResult>;
+  completeTwoFactor: (challenge: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
   setRole: (r: AdminRole) => void;
   setDensity: (d: Density) => void;
@@ -49,6 +55,7 @@ export const useAdmin = create<State>()(
   persist(
     (set, get) => ({
       isSignedIn: false,
+      sessionReady: false,
       email: null,
       name: "Admin",
       role: "super_admin",
@@ -69,8 +76,14 @@ export const useAdmin = create<State>()(
         if (!password) throw new ApiError(400, null, "Password is required");
         const res = await adminAuthApi.login(email, password);
         if (res.twoFactorRequired) {
-          throw new ApiError(401, null, "Two-factor authentication is required");
+          if (!res.challenge) throw new ApiError(401, null, "Two-factor challenge missing");
+          return { status: "two_factor", challenge: res.challenge };
         }
+        get().applyProfile(res.admin);
+        return { status: "signed_in" };
+      },
+      completeTwoFactor: async (challenge, code) => {
+        const res = await adminAuthApi.login2fa(challenge, code.trim());
         get().applyProfile(res.admin);
       },
       signOut: async () => {
@@ -90,13 +103,14 @@ export const useAdmin = create<State>()(
           get().applyProfile(me);
         } catch {
           set({ isSignedIn: false, email: null, permissions: [] });
+        } finally {
+          set({ sessionReady: true });
         }
       },
     }),
     {
       name: "asl-admin",
       partialize: (s) => ({
-        isSignedIn: s.isSignedIn,
         email: s.email,
         name: s.name,
         role: s.role,

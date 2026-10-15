@@ -100,10 +100,9 @@ export function ReturnsPage() {
   const createRMA = async () => {
     try {
       await ordersAdminApi.createReturn({
-        orderNumber: form.order || undefined,
+        orderId: form.order.trim(),
         reason: form.reason,
         refundAmount: form.refund ? Math.round(Number(form.refund) * 100) : undefined,
-        customerName: form.customer || undefined,
       });
       setShowNew(false);
       setForm({ order: "", customer: "", reason: "Size too small", refund: "" });

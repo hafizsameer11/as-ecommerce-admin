@@ -25,7 +25,7 @@ export type AdminConciergeRow = {
   priority: string;
   assignee: { id: string; name: string } | null;
   slaDueAt?: string | null;
-  quote?: { amount?: number; deposit?: number; expiresAt?: string } | null;
+  quote?: { total?: number; amount?: number; deposit?: number; expiresAt?: string } | null;
   images?: string[];
   notes?: string;
   reference?: string | null;

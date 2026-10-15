@@ -8,6 +8,7 @@ import type { CartItem } from "@/lib/cart-store";
 import type { CheckoutAddress, CheckoutContact, DeliveryMethod, PaymentMethod } from "@/lib/checkout-store";
 import { formatCartSize } from "@/lib/shop-data";
 import { ordersAdminApi, koboToNaira, type AdminOrderRow } from "@/lib/api/orders";
+import { ApiError } from "@/lib/api/client";
 
 export type OrderReservation = {
   dropId: string;
@@ -23,18 +24,51 @@ export type OrderReservation = {
   balancePaidAt?: number;
 };
 
+export type OrderNote = { id: string; author: string; at: string; body: string };
+
+export type OrderPaymentRow = {
+  id?: string;
+  method?: string;
+  status?: string;
+  amount: number;
+  ref?: string;
+  capturedAt?: string;
+};
+
+export type OrderTimelineEntry = {
+  at: string;
+  label: string;
+  done?: boolean;
+};
+
 export type PlacedOrder = Order & {
   apiId?: string;
   subtotal: number;
   discount: number;
   couponCode: string | null;
   shipping: number;
+  tax: number;
   address: CheckoutAddress | null;
   contact: CheckoutContact | null;
   delivery: DeliveryMethod;
   payment: PaymentMethod;
   placedAt: number;
   reservation?: OrderReservation;
+  rawStatus?: string;
+  paymentStatus?: string;
+  amountPaid?: number;
+  amountRefunded?: number;
+  due?: number;
+  notes: OrderNote[];
+  payments: OrderPaymentRow[];
+  timeline: OrderTimelineEntry[];
+  customer?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    tier?: string;
+    orders?: number;
+  };
 };
 
 type CreateArgs = {
@@ -98,7 +132,79 @@ function mapListRow(o: AdminOrderRow): PlacedOrder {
     delivery: "ship",
     payment: (o.paymentMethod as PaymentMethod) || "paystack",
     placedAt: placed.getTime(),
+    tax: 0,
+    notes: [],
+    payments: [],
+    timeline: [],
   };
+}
+
+function mapNotes(raw: unknown): OrderNote[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((n) => {
+    const row = n as Record<string, unknown>;
+    return {
+      id: String(row.id ?? `n_${Math.random().toString(36).slice(2)}`),
+      author: String(row.author ?? row.by ?? "Staff"),
+      at: String(row.at ?? row.createdAt ?? new Date().toISOString()),
+      body: String(row.body ?? row.text ?? ""),
+    };
+  });
+}
+
+function mapPayments(raw: unknown): OrderPaymentRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((p) => {
+    const row = p as Record<string, unknown>;
+    return {
+      id: row.id ? String(row.id) : undefined,
+      method: row.method ? String(row.method) : row.channel ? String(row.channel) : undefined,
+      status: row.status ? String(row.status) : undefined,
+      amount: koboToNaira(Number(row.amount ?? row.total ?? 0)),
+      ref: row.ref ? String(row.ref) : row.reference ? String(row.reference) : undefined,
+      capturedAt: row.capturedAt
+        ? String(row.capturedAt)
+        : row.paidAt
+          ? String(row.paidAt)
+          : undefined,
+    };
+  });
+}
+
+function mapTimeline(raw: Record<string, unknown>): OrderTimelineEntry[] {
+  const events = raw.events ?? raw.timeline;
+  if (Array.isArray(events) && events.length > 0) {
+    return events.map((e) => {
+      const row = e as Record<string, unknown>;
+      const at = String(row.at ?? row.time ?? row.createdAt ?? "");
+      const label = String(row.label ?? row.title ?? row.kind ?? row.status ?? row.text ?? "Event");
+      return { at, label, done: row.done !== false };
+    });
+  }
+  const shipments = raw.shipments;
+  if (Array.isArray(shipments)) {
+    return shipments.flatMap((s) => {
+      const ship = s as Record<string, unknown>;
+      const evs = ship.events;
+      if (!Array.isArray(evs)) return [];
+      return evs.map((e) => {
+        const row = e as Record<string, unknown>;
+        return {
+          at: String(row.at ?? ""),
+          label: String(row.label ?? row.status ?? "Shipment update"),
+          done: true,
+        };
+      });
+    });
+  }
+  return [];
+}
+
+function formatWhen(iso: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-US", { month: "short", day: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function mapDetail(raw: Record<string, unknown>): PlacedOrder {
@@ -111,14 +217,18 @@ function mapDetail(raw: Record<string, unknown>): PlacedOrder {
     return {
       name: String(row.name ?? ""),
       brand: row.brand ? String(row.brand) : undefined,
-      variant: String(row.variant ?? ""),
+      variant: String(row.variant ?? row.size ?? ""),
       qty: Number(row.qty ?? 1),
       price: koboToNaira(Number(row.price ?? row.unitPrice ?? 0)),
       image: row.image ? String(row.image) : "",
+      sku: row.sku ? String(row.sku) : row.variantSku ? String(row.variantSku) : undefined,
     };
   });
   const addr = raw.address as Record<string, unknown> | null | undefined;
   const contact = raw.contact as Record<string, unknown> | null | undefined;
+  const cust = raw.customer as Record<string, unknown> | null | undefined;
+  const paymentStatus = String(raw.paymentStatus ?? "");
+  const rawStatus = String(raw.status ?? "");
   return {
     id: number,
     apiId: String(raw.id ?? number),
@@ -156,6 +266,27 @@ function mapDetail(raw: Record<string, unknown>): PlacedOrder {
     delivery: (String(raw.delivery ?? raw.deliveryMethod ?? "ship") === "pickup" ? "pickup" : "ship") as DeliveryMethod,
     payment: (String(raw.payment ?? raw.paymentMethod ?? "paystack") as PaymentMethod) || "paystack",
     placedAt: placedDate.getTime(),
+    rawStatus,
+    paymentStatus,
+    tax: koboToNaira(Number(raw.tax ?? 0)),
+    amountPaid: raw.amountPaid != null ? koboToNaira(Number(raw.amountPaid)) : undefined,
+    amountRefunded: raw.amountRefunded != null ? koboToNaira(Number(raw.amountRefunded)) : undefined,
+    due: raw.due != null ? koboToNaira(Number(raw.due)) : undefined,
+    notes: mapNotes(raw.notes),
+    payments: mapPayments(raw.payments),
+    timeline: mapTimeline(raw).map((t) => ({ ...t, at: formatWhen(t.at) })),
+    customer: cust
+      ? {
+          name: String(
+            cust.name ??
+              (`${cust.firstName ?? ""} ${cust.lastName ?? ""}`.trim() || "Customer"),
+          ),
+          email: cust.email ? String(cust.email) : undefined,
+          phone: cust.phone ? String(cust.phone) : undefined,
+          tier: cust.tier ? String(cust.tier) : undefined,
+          orders: cust.orders != null ? Number(cust.orders) : cust.orderCount != null ? Number(cust.orderCount) : undefined,
+        }
+      : undefined,
   };
 }
 
@@ -209,7 +340,7 @@ export const useOrders = create<State>()((set, get) => ({
       return mapped;
     } catch (err) {
       console.warn("[orders-store] ensureOrder", err);
-      return existing;
+      throw err instanceof ApiError ? err : new Error(err instanceof Error ? err.message : "Failed to load order");
     }
   },
   createOrder: ({ items, subtotal, discount, couponCode, shipping, address, contact, delivery, payment }) => {
@@ -247,6 +378,10 @@ export const useOrders = create<State>()((set, get) => ({
       payment,
       placedAt: now.getTime(),
       reservation: reservationFrom(items),
+      tax: 0,
+      notes: [],
+      payments: [],
+      timeline: [],
     };
     set((s) => ({ orders: [order, ...s.orders] }));
     return order;
