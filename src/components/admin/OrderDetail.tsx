@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useOrderById, useOrders } from "@/lib/orders-store";
 import { ordersAdminApi } from "@/lib/api/orders";
-import { apiBaseUrl, ApiError } from "@/lib/api/client";
+import { apiBaseUrl, errorMessage, loadTokens } from "@/lib/api/client";
 import { Card, Chip, StatusPill, naira } from "./ui";
 
 function paymentLabel(order: NonNullable<ReturnType<typeof useOrderById>>) {
@@ -39,7 +39,10 @@ function paymentTone(label: string): "green" | "red" | "amber" | "neutral" {
 
 async function openOrderPdf(apiId: string, suffix: string, filename: string) {
   const url = `${apiBaseUrl()}/api/v1/admin/orders/${encodeURIComponent(apiId)}${suffix}`;
-  const res = await fetch(url, { credentials: "include" });
+  const tokens = loadTokens();
+  const headers: Record<string, string> = {};
+  if (tokens?.accessToken) headers.Authorization = `Bearer ${tokens.accessToken}`;
+  const res = await fetch(url, { credentials: "include", headers });
   if (!res.ok) {
     let msg = res.statusText;
     try {
@@ -90,7 +93,7 @@ export function OrderDetail({ id }: { id: string }) {
       toast.success(success);
       await ensureOrder(id);
     } catch (err) {
-      toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Action failed");
+      toast.error(errorMessage(err, "Action failed"));
     } finally {
       setBusy(null);
     }
@@ -436,11 +439,26 @@ export function OrderDetail({ id }: { id: string }) {
               <button
                 type="button"
                 disabled={!!busy}
-                onClick={() =>
-                  void run("refund", async () => {
-                    await ordersAdminApi.refund(apiId);
-                  }, "Refund submitted")
-                }
+                onClick={() => {
+                  const reason = window.prompt("Refund reason (required, min 3 characters):", "Customer requested refund");
+                  if (!reason?.trim()) return;
+                  if (reason.trim().length < 3) {
+                    toast.error("Refund reason must be at least 3 characters.");
+                    return;
+                  }
+                  const toWallet = window.confirm("Refund to ASL Wallet?\n\nOK = wallet\nCancel = original payment method");
+                  void run(
+                    "refund",
+                    async () => {
+                      await ordersAdminApi.refund(apiId, {
+                        reason: reason.trim(),
+                        to: toWallet ? "wallet" : "original",
+                        restock: ["paid", "processing"].includes((order.rawStatus || "").toLowerCase()),
+                      });
+                    },
+                    "Refund submitted",
+                  );
+                }}
                 className="w-full h-9 rounded-md border border-black/10 bg-white text-[13px] hover:bg-black/[0.04] disabled:opacity-50"
               >
                 Refund order

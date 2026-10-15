@@ -22,6 +22,30 @@ export class ApiError extends Error {
     this.details = body?.error?.details;
     this.requestId = body?.error?.requestId;
   }
+
+  /** Prefer field-level Zod details over the generic "highlighted fields" copy. */
+  displayMessage(): string {
+    const details = this.details;
+    if (Array.isArray(details) && details.length > 0) {
+      const parts = details
+        .map((d) => {
+          if (!d || typeof d !== "object") return null;
+          const row = d as { path?: string; message?: string; in?: string };
+          const where = [row.in, row.path].filter(Boolean).join(".");
+          if (where && row.message) return `${where}: ${row.message}`;
+          return row.message ?? null;
+        })
+        .filter((s): s is string => !!s);
+      if (parts.length) return parts.join("; ");
+    }
+    return this.message;
+  }
+}
+
+export function errorMessage(err: unknown, fallback = "Request failed"): string {
+  if (err instanceof ApiError) return err.displayMessage();
+  if (err instanceof Error) return err.message;
+  return fallback;
 }
 
 const DEFAULT_BASE = "http://localhost:4000";
