@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { koboToNaira, nairaToKobo } from "@/lib/api/client";
+import { ApiError, koboToNaira, nairaToKobo } from "@/lib/api/client";
 import { ledgerAdminApi } from "@/lib/api/platform";
+import { toast } from "sonner";
 
 export type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
 export type EntryStatus = "posted" | "draft" | "void";
@@ -135,8 +136,12 @@ function entryBody(e: Omit<JournalEntry, "id" | "createdAt"> | Partial<JournalEn
 export type LedgerState = {
   accounts: Account[];
   entries: JournalEntry[];
+  trialBalances: AccountBalance[];
+  entriesPage: number;
+  entriesPageCount: number;
   hydrated: boolean;
-  hydrate: () => Promise<void>;
+  hydrate: (opts?: { entriesPage?: number; pageSize?: number }) => Promise<void>;
+  loadTrialBalance: (query?: { from?: string; to?: string }) => Promise<void>;
   addEntry: (e: Omit<JournalEntry, "id" | "createdAt">) => Promise<JournalEntry>;
   updateEntry: (id: string, patch: Partial<JournalEntry>) => Promise<void>;
   postEntry: (id: string) => Promise<void>;
@@ -145,24 +150,67 @@ export type LedgerState = {
   reseed: () => void;
 };
 
+function mapTrialRow(row: Record<string, unknown>, accounts: Account[]): AccountBalance | null {
+  const code = str(row.code ?? row.accountCode);
+  const account = accounts.find((a) => a.code === code) ?? {
+    code,
+    name: str(row.name, code),
+    type: (str(row.type, "asset") as AccountType),
+    currency: "NGN" as const,
+  };
+  const debit = koboToNaira(num(row.debit));
+  const credit = koboToNaira(num(row.credit));
+  const balanceRaw = row.balance != null ? koboToNaira(num(row.balance)) : undefined;
+  const normal = ACCOUNT_TYPE_META[account.type]?.normal ?? "debit";
+  const balance =
+    balanceRaw ??
+    (normal === "debit" ? debit - credit : credit - debit);
+  return { account, debit, credit, balance };
+}
+
 export const useLedger = create<LedgerState>()((set, get) => ({
   accounts: [],
   entries: [],
+  trialBalances: [],
+  entriesPage: 1,
+  entriesPageCount: 1,
   hydrated: false,
-  hydrate: async () => {
+  hydrate: async (opts) => {
+    const entriesPage = opts?.entriesPage ?? 1;
+    const pageSize = opts?.pageSize ?? 50;
     try {
       const [accountsRes, entriesRes] = await Promise.all([
         ledgerAdminApi.accounts({}),
-        ledgerAdminApi.entries({ pageSize: 100 }),
+        ledgerAdminApi.entries({ page: entriesPage, pageSize }),
       ]);
+      const accounts = (accountsRes.data as Record<string, unknown>[]).map(mapAccount);
       set({
-        accounts: (accountsRes.data as Record<string, unknown>[]).map(mapAccount),
+        accounts,
         entries: (entriesRes.data as Record<string, unknown>[]).map(mapEntry),
+        entriesPage,
+        entriesPageCount: Math.max(1, Number(entriesRes.meta?.pageCount ?? 1)),
         hydrated: true,
       });
+      await get().loadTrialBalance();
     } catch (err) {
       console.warn("[ledger] hydrate failed", err);
+      toast.error(err instanceof ApiError ? err.message : "Failed to load ledger");
       set({ hydrated: true });
+    }
+  },
+  loadTrialBalance: async (query) => {
+    try {
+      const raw = await ledgerAdminApi.trialBalance(query ?? {});
+      const accounts = get().accounts;
+      const envelope = raw as Record<string, unknown>;
+      const rows = (envelope.rows ?? envelope.accounts ?? envelope.data ?? raw) as unknown;
+      const list = Array.isArray(rows) ? rows : [];
+      const trialBalances = list
+        .map((r) => mapTrialRow(r as Record<string, unknown>, accounts))
+        .filter((b): b is AccountBalance => b !== null);
+      if (trialBalances.length) set({ trialBalances });
+    } catch (err) {
+      console.warn("[ledger] trialBalance failed", err);
     }
   },
   addEntry: async (e) => {
@@ -174,6 +222,7 @@ export const useLedger = create<LedgerState>()((set, get) => ({
       return created;
     } catch (err) {
       console.warn("[ledger] addEntry", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not create entry");
       await get().hydrate();
       return {
         ...e,
@@ -195,6 +244,7 @@ export const useLedger = create<LedgerState>()((set, get) => ({
       }));
     } catch (err) {
       console.warn("[ledger] updateEntry", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not update entry");
       await get().hydrate();
     }
   },
@@ -211,6 +261,7 @@ export const useLedger = create<LedgerState>()((set, get) => ({
       }));
     } catch (err) {
       console.warn("[ledger] postEntry", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not post entry");
       await get().hydrate();
     }
   },
@@ -227,6 +278,7 @@ export const useLedger = create<LedgerState>()((set, get) => ({
       }));
     } catch (err) {
       console.warn("[ledger] voidEntry", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not void entry");
       await get().hydrate();
     }
   },
@@ -242,6 +294,7 @@ export const useLedger = create<LedgerState>()((set, get) => ({
       set((s) => ({ accounts: [...s.accounts, created] }));
     } catch (err) {
       console.warn("[ledger] addAccount", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not add account");
       await get().hydrate();
     }
   },

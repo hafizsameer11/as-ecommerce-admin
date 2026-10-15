@@ -1,14 +1,15 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useAdmin } from "@/lib/admin-role-store";
-import { filterNavForRole } from "./nav-config";
+import { filterNavForAccess } from "./nav-config";
 import { ChevronLeft } from "lucide-react";
 
 export function AdminSidebar() {
   const role = useAdmin((s) => s.role);
+  const permissions = useAdmin((s) => s.permissions);
   const collapsed = useAdmin((s) => s.sidebarCollapsed);
   const toggle = useAdmin((s) => s.toggleSidebar);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const groups = filterNavForRole(role);
+  const groups = filterNavForAccess(role, permissions);
 
   const isActive = (to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
 

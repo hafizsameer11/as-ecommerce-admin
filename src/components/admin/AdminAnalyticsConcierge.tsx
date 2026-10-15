@@ -5,6 +5,7 @@ import {
   useConciergeAnalytics, PRIORITY_LABEL,
   type Range, type Priority,
 } from "@/lib/analytics-concierge-store";
+import { formatKpiDelta, kpiDeltaFraction } from "@/lib/analytics-kpi";
 import { downloadCSV } from "@/lib/admin-export";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -30,7 +31,7 @@ export function AdminAnalyticsConcierge() {
     range, priority, setRange, setPriority, hydrate,
     series, stages, categories, agents, suppliers, reasons,
     totalRequests, totalQuotes, totalConverted, gmv, aov, conversion, slaPct,
-    firstResponseMin, avgQuoteHours, avgFulfillmentDays, openTickets,
+    firstResponseMin, avgQuoteHours, avgFulfillmentDays, openTickets, kpis, slaTargets,
   } = useConciergeAnalytics();
 
   useEffect(() => {
@@ -106,18 +107,38 @@ export function AdminAnalyticsConcierge() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <KPI label="Requests" value={data.totalRequests.toLocaleString()} delta={0.14} icon={<MessageSquare className="h-4 w-4" />} />
-        <KPI label="Converted" value={data.totalConverted.toLocaleString()} delta={0.09} icon={<CheckCircle2 className="h-4 w-4" />} />
-        <KPI label="Conversion rate" value={`${(data.conversion * 100).toFixed(1)}%`} delta={0.024} icon={<Percent className="h-4 w-4" />} />
-        <KPI label="Concierge GMV" value={naira(Math.round(data.gmv))} delta={0.18} icon={<Sparkles className="h-4 w-4" />} />
+        <KPI label="Requests" value={data.totalRequests.toLocaleString()} delta={kpiDeltaFraction(kpis.requests ?? kpis.totalRequests)} icon={<MessageSquare className="h-4 w-4" />} />
+        <KPI label="Converted" value={data.totalConverted.toLocaleString()} delta={kpiDeltaFraction(kpis.converted ?? kpis.totalConverted)} icon={<CheckCircle2 className="h-4 w-4" />} />
+        <KPI label="Conversion rate" value={`${(data.conversion * 100).toFixed(1)}%`} delta={kpiDeltaFraction(kpis.conversion)} icon={<Percent className="h-4 w-4" />} />
+        <KPI label="Concierge GMV" value={naira(Math.round(data.gmv))} delta={kpiDeltaFraction(kpis.gmv)} icon={<Sparkles className="h-4 w-4" />} />
       </div>
 
       {/* Ops SLA row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <StatCard label="First response" value={`${data.firstResponseMin} min`} sub="Target ≤ 15 min" ok={data.firstResponseMin <= 15} />
-        <StatCard label="Avg. quote time" value={`${data.avgQuoteHours.toFixed(1)} hrs`} sub="Target ≤ 6 hrs" ok={data.avgQuoteHours <= 6} />
-        <StatCard label="Avg. fulfilment" value={`${data.avgFulfillmentDays.toFixed(1)} days`} sub="Target ≤ 14 days" ok={data.avgFulfillmentDays <= 14} />
-        <StatCard label="SLA adherence" value={`${(data.slaPct * 100).toFixed(1)}%`} sub="Target ≥ 90%" ok={data.slaPct >= 0.9} />
+        <StatCard
+          label="First response"
+          value={`${data.firstResponseMin} min`}
+          sub={slaTargets?.firstResponseMin != null ? `Target ≤ ${slaTargets.firstResponseMin} min` : "vs prior period"}
+          ok={slaTargets?.firstResponseMin != null ? data.firstResponseMin <= slaTargets.firstResponseMin : undefined}
+        />
+        <StatCard
+          label="Avg. quote time"
+          value={`${data.avgQuoteHours.toFixed(1)} hrs`}
+          sub={slaTargets?.avgQuoteHours != null ? `Target ≤ ${slaTargets.avgQuoteHours} hrs` : "vs prior period"}
+          ok={slaTargets?.avgQuoteHours != null ? data.avgQuoteHours <= slaTargets.avgQuoteHours : undefined}
+        />
+        <StatCard
+          label="Avg. fulfilment"
+          value={`${data.avgFulfillmentDays.toFixed(1)} days`}
+          sub={slaTargets?.avgFulfillmentDays != null ? `Target ≤ ${slaTargets.avgFulfillmentDays} days` : "vs prior period"}
+          ok={slaTargets?.avgFulfillmentDays != null ? data.avgFulfillmentDays <= slaTargets.avgFulfillmentDays : undefined}
+        />
+        <StatCard
+          label="SLA adherence"
+          value={`${(data.slaPct * 100).toFixed(1)}%`}
+          sub={slaTargets?.slaPct != null ? `Target ≥ ${(slaTargets.slaPct * 100).toFixed(0)}%` : "vs prior period"}
+          ok={slaTargets?.slaPct != null ? data.slaPct >= slaTargets.slaPct : undefined}
+        />
       </div>
 
       {/* Requests over time */}
@@ -352,8 +373,8 @@ export function AdminAnalyticsConcierge() {
   );
 }
 
-function KPI({ label, value, delta, icon }: { label: string; value: string; delta: number; icon?: React.ReactNode }) {
-  const up = delta >= 0;
+function KPI({ label, value, delta, icon }: { label: string; value: string; delta: number | null; icon?: React.ReactNode }) {
+  const up = delta != null ? delta >= 0 : true;
   return (
     <Card>
       <div className="flex items-center justify-between">
@@ -361,15 +382,15 @@ function KPI({ label, value, delta, icon }: { label: string; value: string; delt
         <div className="text-muted-foreground">{icon}</div>
       </div>
       <div className="font-display text-[22px] font-bold mt-1">{value}</div>
-      <div className={`text-[12px] inline-flex items-center gap-1 mt-1 ${up ? "text-ink" : "text-rose-700"}`}>
-        {up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-        {up ? "+" : ""}{(delta * 100).toFixed(1)}%
+      <div className={`text-[12px] inline-flex items-center gap-1 mt-1 ${delta == null ? "text-muted-foreground" : up ? "text-ink" : "text-rose-700"}`}>
+        {delta != null && (up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />)}
+        {formatKpiDelta(delta)}
       </div>
     </Card>
   );
 }
 
-function StatCard({ label, value, sub, ok }: { label: string; value: string; sub: string; ok: boolean }) {
+function StatCard({ label, value, sub, ok }: { label: string; value: string; sub: string; ok?: boolean }) {
   return (
     <Card>
       <div className="flex items-center justify-between">
@@ -377,8 +398,8 @@ function StatCard({ label, value, sub, ok }: { label: string; value: string; sub
         <Clock className="h-4 w-4 text-muted-foreground" />
       </div>
       <div className="font-display text-[20px] font-bold mt-1">{value}</div>
-      <div className={`text-[11px] mt-0.5 ${ok ? "text-ink" : "text-rose-700"}`}>
-        {ok ? "On target · " : "Off target · "}{sub}
+      <div className={`text-[11px] mt-0.5 ${ok === undefined ? "text-muted-foreground" : ok ? "text-ink" : "text-rose-700"}`}>
+        {ok === undefined ? sub : `${ok ? "On target · " : "Off target · "}${sub}`}
       </div>
     </Card>
   );

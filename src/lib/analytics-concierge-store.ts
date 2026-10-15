@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { analyticsAdminApi } from "@/lib/api/platform";
 import { koboToNaira } from "@/lib/api/client";
+import { mapAnalyticsKpis, type AnalyticsKpi } from "@/lib/analytics-kpi";
 
 export type Range = "7d" | "30d" | "90d" | "12m";
 export type Priority = "all" | "standard" | "priority" | "vip";
@@ -46,6 +47,13 @@ export type ConciergeData = {
 };
 
 type State = ConciergeData & {
+  kpis: Record<string, AnalyticsKpi>;
+  slaTargets?: {
+    firstResponseMin?: number;
+    avgQuoteHours?: number;
+    avgFulfillmentDays?: number;
+    slaPct?: number;
+  };
   range: Range;
   priority: Priority;
   hydrated: boolean;
@@ -76,6 +84,8 @@ const emptyData = (): ConciergeData => ({
 
 export const useConciergeAnalytics = create<State>()((set, get) => ({
   ...emptyData(),
+  kpis: {},
+  slaTargets: undefined,
   range: "30d",
   priority: "all",
   hydrated: false,
@@ -131,10 +141,20 @@ export const useConciergeAnalytics = create<State>()((set, get) => ({
         reason: String(r.reason ?? ""),
         pct: Number(r.pct ?? 0),
       }));
+      const kpis = mapAnalyticsKpis(d.kpis, ["gmv", "aov"]);
+      const targetsRaw = (d.targets ?? d.slaTargets ?? {}) as Record<string, unknown>;
+      const slaTargets = {
+        firstResponseMin: Number(targetsRaw.firstResponseMin ?? targetsRaw.responseSlaMinutes ?? 0) || undefined,
+        avgQuoteHours: Number(targetsRaw.avgQuoteHours ?? targetsRaw.quoteSlaHours ?? 0) || undefined,
+        avgFulfillmentDays: Number(targetsRaw.avgFulfillmentDays ?? targetsRaw.fulfillmentSlaDays ?? 0) || undefined,
+        slaPct: Number(targetsRaw.slaPct ?? targetsRaw.slaTarget ?? 0) || undefined,
+      };
       set({
         range,
         priority,
         hydrated: true,
+        kpis,
+        slaTargets: Object.values(slaTargets).some((v) => v != null) ? slaTargets : undefined,
         series,
         stages,
         categories,

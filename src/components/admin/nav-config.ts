@@ -9,6 +9,7 @@ import {
   CalendarClock,
 } from "lucide-react";
 import type { AdminRole } from "@/lib/admin-role-store";
+import type { PermissionKey } from "@/lib/team-store";
 
 export type NavItem = {
   id: string;
@@ -17,6 +18,63 @@ export type NavItem = {
   icon: LucideIcon;
   badge?: number | string;
   roles?: AdminRole[]; // if omitted, visible to all
+  permissions?: PermissionKey[];
+};
+
+/** When session permissions are loaded, any matching key grants access. */
+const NAV_ITEM_PERMISSIONS: Partial<Record<string, PermissionKey[]>> = {
+  orders: ["orders.view"],
+  drafts: ["orders.view"],
+  carts: ["marketing.manage"],
+  returns: ["orders.view"],
+  transactions: ["finance.view"],
+  inbox: ["concierge.view"],
+  board: ["concierge.view"],
+  quotes: ["concierge.quote"],
+  suppliers: ["concierge.view"],
+  chat: ["concierge.view"],
+  products: ["catalog.view"],
+  collections: ["catalog.view"],
+  categories: ["catalog.view"],
+  brands: ["catalog.view"],
+  "size-guides": ["catalog.view"],
+  "coming-soon": ["catalog.view"],
+  inventory: ["inventory.adjust", "catalog.view"],
+  media: ["catalog.view", "content.publish"],
+  reviews: ["catalog.view", "support.tickets"],
+  customers: ["customers.view"],
+  segments: ["marketing.manage"],
+  club: ["marketing.manage"],
+  wallets: ["customers.wallet", "finance.view"],
+  addresses: ["customers.view"],
+  campaigns: ["marketing.manage"],
+  coupons: ["marketing.manage"],
+  slots: ["marketing.manage", "content.publish"],
+  banners: ["marketing.manage", "content.publish"],
+  messaging: ["marketing.manage"],
+  referrals: ["marketing.manage"],
+  seo: ["marketing.manage", "content.publish"],
+  pages: ["content.publish"],
+  faqs: ["content.publish"],
+  announcement: ["content.publish", "marketing.manage"],
+  blog: ["content.publish"],
+  shipments: ["orders.edit"],
+  "shipping-zones": ["orders.edit"],
+  pickups: ["orders.edit"],
+  payouts: ["finance.payouts"],
+  tax: ["finance.view"],
+  reports: ["finance.view", "analytics.view"],
+  ledger: ["finance.ledger"],
+  "sales-a": ["analytics.view"],
+  "traffic-a": ["analytics.view"],
+  "products-a": ["analytics.view"],
+  "concierge-a": ["analytics.view"],
+  cohorts: ["analytics.view"],
+  tickets: ["support.tickets"],
+  team: ["team.manage"],
+  audit: ["audit.view"],
+  settings: ["settings.manage"],
+  notifications: ["settings.manage"],
 };
 
 export type NavGroup = {
@@ -204,9 +262,25 @@ export const NAV: NavGroup[] = [
   },
 ];
 
-export function filterNavForRole(role: AdminRole): NavGroup[] {
+function itemVisible(item: NavItem, role: AdminRole, permissions: string[]): boolean {
+  const permKeys = item.permissions ?? NAV_ITEM_PERMISSIONS[item.id];
+  if (permissions.length > 0 && permKeys?.length) {
+    const granted = new Set(permissions);
+    if (permKeys.some((p) => granted.has(p))) return true;
+    if (item.roles && item.roles.includes(role)) return true;
+    return false;
+  }
+  return !item.roles || item.roles.includes(role);
+}
+
+export function filterNavForAccess(role: AdminRole, permissions: string[] = []): NavGroup[] {
   return NAV.map((g) => ({
     ...g,
-    items: g.items.filter((i) => !i.roles || i.roles.includes(role)),
+    items: g.items.filter((i) => itemVisible(i, role, permissions)),
   })).filter((g) => g.items.length > 0);
+}
+
+/** @deprecated Use filterNavForAccess with session permissions when available. */
+export function filterNavForRole(role: AdminRole): NavGroup[] {
+  return filterNavForAccess(role, []);
 }

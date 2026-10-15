@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { analyticsAdminApi } from "@/lib/api/platform";
+import { mapAnalyticsKpis, type AnalyticsKpi } from "@/lib/analytics-kpi";
 
 export type Range = "7d" | "30d" | "90d" | "12m";
 export type Device = "all" | "mobile" | "desktop" | "tablet";
@@ -45,6 +46,7 @@ export type TrafficData = {
 };
 
 type State = TrafficData & {
+  kpis: Record<string, AnalyticsKpi>;
   range: Range;
   device: Device;
   source: Source | "all";
@@ -84,6 +86,7 @@ function asSource(v: unknown): Source | null {
 
 export const useTrafficAnalytics = create<State>()((set, get) => ({
   ...emptyData(),
+  kpis: {},
   range: "30d",
   device: "all",
   source: "all",
@@ -155,11 +158,13 @@ export const useTrafficAnalytics = create<State>()((set, get) => ({
         stage: String(f.stage ?? ""),
         value: Number(f.value ?? 0),
       }));
+      const kpis = mapAnalyticsKpis(d.kpis);
       set({
         range,
         device,
         source,
         hydrated: true,
+        kpis,
         series,
         sources,
         devices,

@@ -101,7 +101,8 @@ export const useShipments = create<State>()((set, get) => ({
   hydrated: false,
   hydrate: async () => {
     try {
-      const { data } = await ordersAdminApi.listShipments({ pageSize: 100 });
+      const { data, meta } = await ordersAdminApi.listShipments({ page: 1, pageSize: 50 });
+      void meta;
       set({ shipments: data.map(mapShipment), hydrated: true });
     } catch (err) {
       console.warn("[shipments] hydrate failed", err);

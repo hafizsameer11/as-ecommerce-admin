@@ -100,7 +100,8 @@ export const useWallets = create<State>()((set, get) => ({
   hydrated: false,
   hydrate: async () => {
     try {
-      const { data } = await walletsAdminApi.list({ pageSize: 100 });
+      const { data, meta } = await walletsAdminApi.list({ page: 1, pageSize: 50 });
+      void meta;
       const rows = (data as Record<string, unknown>[]) ?? [];
       const txs = rows.map(mapTx);
       const freezes: Record<string, boolean> = {};

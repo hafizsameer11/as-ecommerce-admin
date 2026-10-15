@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { toast } from "sonner";
+import { ApiError } from "@/lib/api/client";
 import {
   mapAdminProduct,
   productsAdminApi,
@@ -28,8 +30,10 @@ export function statusKey(label: UiStatus): AdminProductStatus {
 type State = {
   products: AdminProduct[];
   counts: { all: number; active: number; draft: number; archived: number };
+  page: number;
+  pageCount: number;
   hydrated: boolean;
-  hydrate: () => Promise<void>;
+  hydrate: (opts?: { page?: number; pageSize?: number; append?: boolean }) => Promise<void>;
   create: (body: ProductInputBody) => Promise<AdminProduct>;
   update: (id: string, patch: ProductPatchBody) => Promise<void>;
   setStatus: (id: string, status: AdminProductStatus) => Promise<void>;
@@ -41,22 +45,34 @@ type State = {
 export const useProducts = create<State>()((set, get) => ({
   products: [],
   counts: { all: 0, active: 0, draft: 0, archived: 0 },
+  page: 1,
+  pageCount: 1,
   hydrated: false,
-  hydrate: async () => {
+  hydrate: async (opts) => {
+    const page = opts?.page ?? 1;
+    const pageSize = opts?.pageSize ?? 50;
     try {
-      const { data, meta } = await productsAdminApi.list({ pageSize: 200 });
-      const products = ((data as unknown[]) ?? []).map((d) =>
+      const { data, meta } = await productsAdminApi.list({ page, pageSize });
+      const batch = ((data as unknown[]) ?? []).map((d) =>
         mapAdminProduct(d as Parameters<typeof mapAdminProduct>[0]),
       );
-      const counts = (meta?.counts as State["counts"] | undefined) ?? {
-        all: products.length,
-        active: products.filter((p) => p.status === "active").length,
-        draft: products.filter((p) => p.status === "draft").length,
-        archived: products.filter((p) => p.status === "archived").length,
-      };
-      set({ products, counts, hydrated: true });
+      const counts = (meta?.counts as State["counts"] | undefined) ??
+        (meta?.tabs as State["counts"] | undefined) ?? {
+          all: Number(meta?.total ?? batch.length),
+          active: batch.filter((p) => p.status === "active").length,
+          draft: batch.filter((p) => p.status === "draft").length,
+          archived: batch.filter((p) => p.status === "archived").length,
+        };
+      set((s) => ({
+        products: opts?.append && page > 1 ? [...s.products, ...batch] : batch,
+        counts,
+        page,
+        pageCount: Math.max(1, Number(meta?.pageCount ?? 1)),
+        hydrated: true,
+      }));
     } catch (err) {
       console.warn("[products] hydrate failed", err);
+      toast.error(err instanceof ApiError ? err.message : "Failed to load products");
       set({ hydrated: true });
     }
   },
@@ -88,6 +104,7 @@ export const useProducts = create<State>()((set, get) => ({
       }));
     } catch (err) {
       console.warn("[products] setStatus sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not update product status");
       await get().hydrate();
       throw err;
     }
@@ -107,6 +124,7 @@ export const useProducts = create<State>()((set, get) => ({
       await get().hydrate();
     } catch (err) {
       console.warn("[products] remove sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not remove product");
       await get().hydrate();
       throw err;
     }

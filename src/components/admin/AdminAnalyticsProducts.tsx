@@ -5,6 +5,7 @@ import {
   useProductAnalytics, CATEGORY_LABEL,
   type Range, type Category,
 } from "@/lib/analytics-products-store";
+import { formatKpiDelta, kpiDeltaFraction } from "@/lib/analytics-kpi";
 import { downloadCSV } from "@/lib/admin-export";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -25,7 +26,7 @@ export function AdminAnalyticsProducts() {
   const {
     range, category, sort, setRange, setCategory, setSort, hydrate,
     rows, categories, brands, slowMovers, topSearches, zeroResults,
-    totalRevenue, totalUnits, totalViews, avgConv, avgMargin, liveCount, lowStock, outOfStock,
+    totalRevenue, totalUnits, totalViews, avgConv, avgMargin, liveCount, lowStock, outOfStock, kpis,
   } = useProductAnalytics();
 
   useEffect(() => {
@@ -127,10 +128,10 @@ export function AdminAnalyticsProducts() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <KPI label="Revenue" value={naira(data.totalRevenue)} delta={0.12} icon={<ShoppingBag className="h-4 w-4" />} />
-        <KPI label="Units sold" value={data.totalUnits.toLocaleString()} delta={0.08} icon={<Package className="h-4 w-4" />} />
-        <KPI label="Avg. conversion" value={`${(data.avgConv * 100).toFixed(2)}%`} delta={0.02} />
-        <KPI label="Avg. margin" value={`${(data.avgMargin * 100).toFixed(1)}%`} delta={-0.014} invert />
+        <KPI label="Revenue" value={naira(data.totalRevenue)} delta={kpiDeltaFraction(kpis.revenue)} icon={<ShoppingBag className="h-4 w-4" />} />
+        <KPI label="Units sold" value={data.totalUnits.toLocaleString()} delta={kpiDeltaFraction(kpis.units)} icon={<Package className="h-4 w-4" />} />
+        <KPI label="Avg. conversion" value={`${(data.avgConv * 100).toFixed(2)}%`} delta={kpiDeltaFraction(kpis.avgConv)} />
+        <KPI label="Avg. margin" value={`${(data.avgMargin * 100).toFixed(1)}%`} delta={kpiDeltaFraction(kpis.avgMargin)} invert />
       </div>
 
       {/* inventory alerts */}
@@ -444,9 +445,9 @@ export function AdminAnalyticsProducts() {
 
 function KPI({
   label, value, delta, icon, invert = false,
-}: { label: string; value: string; delta: number; icon?: React.ReactNode; invert?: boolean }) {
-  const up = delta >= 0;
-  const good = invert ? !up : up;
+}: { label: string; value: string; delta: number | null; icon?: React.ReactNode; invert?: boolean }) {
+  const up = delta != null ? delta >= 0 : true;
+  const good = delta == null ? true : invert ? !up : up;
   return (
     <Card>
       <div className="flex items-center justify-between">
@@ -454,9 +455,9 @@ function KPI({
         <div className="text-muted-foreground">{icon}</div>
       </div>
       <div className="font-display text-[22px] font-bold mt-1">{value}</div>
-      <div className={`text-[12px] inline-flex items-center gap-1 mt-1 ${good ? "text-ink" : "text-rose-700"}`}>
-        {up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-        {delta >= 0 ? "+" : ""}{(delta * 100).toFixed(1)}%
+      <div className={`text-[12px] inline-flex items-center gap-1 mt-1 ${delta == null ? "text-muted-foreground" : good ? "text-ink" : "text-rose-700"}`}>
+        {delta != null && (up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />)}
+        {formatKpiDelta(delta)}
       </div>
     </Card>
   );

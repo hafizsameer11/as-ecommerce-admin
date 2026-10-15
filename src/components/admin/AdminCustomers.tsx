@@ -8,7 +8,10 @@ import {
 import { PageHeader } from "./AdminShell";
 import { Card, Chip, IconButton, TableWrap, Toolbar, Empty, StatusPill, naira } from "./ui";
 import { useCustomers, type Customer, type CustomerTier, type CustomerStatus } from "@/lib/customers-store";
-import { downloadCSV } from "@/lib/admin-export";
+import { downloadAdminExport, downloadCSV } from "@/lib/admin-export";
+import { ordersAdminApi } from "@/lib/api/orders";
+import { koboToNaira } from "@/lib/api/client";
+import { toast } from "sonner";
 
 const TIERS: CustomerTier[] = ["Signature", "Gold", "Silver", "Standard"];
 const TABS: Array<{ id: "all" | CustomerStatus; label: string }> = [
@@ -46,13 +49,12 @@ function fmtDate(iso: string) {
 
 type SortKey = "name" | "spend" | "orders" | "lastOrderAt" | "createdAt";
 
+const PAGE_SIZE = 50;
+
 export function AdminCustomers() {
   const customers = useCustomers((s) => s.customers);
+  const listMeta = useCustomers((s) => s.listMeta);
   const hydrate = useCustomers((s) => s.hydrate);
-
-  useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
   const setStatus = useCustomers((s) => s.setStatus);
   const setTier = useCustomers((s) => s.setTier);
   const toggleMarketing = useCustomers((s) => s.toggleMarketing);
@@ -70,29 +72,42 @@ export function AdminCustomers() {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "spend", dir: "desc" });
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 12;
   const [openId, setOpenId] = useState<string | null>(null);
   const active = customers.find((c) => c.id === openId) ?? null;
 
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void hydrate({
+        page,
+        pageSize: PAGE_SIZE,
+        tab: tab === "all" ? "all" : tab,
+        q: query.trim() || undefined,
+      });
+    }, query.trim() ? 300 : 0);
+    return () => window.clearTimeout(t);
+  }, [hydrate, page, tab, query]);
+
   const kpis = useMemo(() => {
-    const total = customers.length;
+    const m = listMeta.kpis;
+    if (m && Object.keys(m).length > 0) {
+      return {
+        total: Number(m.total ?? listMeta.total ?? customers.length),
+        vip: Number(m.vip ?? m.vipCount ?? 0),
+        spend: koboToNaira(Number(m.lifetimeSpend ?? m.spend ?? 0)),
+        aov: koboToNaira(Number(m.aov ?? 0)),
+      };
+    }
+    const total = listMeta.total ?? customers.length;
     const vip = customers.filter((c) => c.status === "vip").length;
     const spend = customers.reduce((s, c) => s + c.spend, 0);
     const orders = customers.reduce((s, c) => s + c.orders, 0);
     const aov = orders > 0 ? Math.round(spend / orders) : 0;
     return { total, vip, spend, aov };
-  }, [customers]);
+  }, [customers, listMeta]);
 
   const filtered = useMemo(() => {
     let list = customers.slice();
-    if (tab !== "all") list = list.filter((c) => c.status === tab);
     if (tierFilter !== "all") list = list.filter((c) => c.tier === tierFilter);
-    const q = query.trim().toLowerCase();
-    if (q) {
-      list = list.filter((c) =>
-        [c.name, c.email, c.phone, c.city, c.country, c.id, ...c.tags].join(" ").toLowerCase().includes(q)
-      );
-    }
     list.sort((a, b) => {
       const dir = sort.dir === "asc" ? 1 : -1;
       const av = a[sort.key] as any;
@@ -101,10 +116,10 @@ export function AdminCustomers() {
       return String(av).localeCompare(String(bv)) * dir;
     });
     return list;
-  }, [customers, tab, tierFilter, query, sort]);
+  }, [customers, tierFilter, sort]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pageCount = Math.max(1, listMeta.pageCount ?? 1);
+  const paged = filtered;
 
   const allSelectedOnPage = paged.length > 0 && paged.every((c) => selection.has(c.id));
 
@@ -123,19 +138,38 @@ export function AdminCustomers() {
     });
   }
 
-  function exportCSV(scope: "filtered" | "selected" | "all") {
-    const src = scope === "all" ? customers : scope === "selected"
-      ? customers.filter((c) => selection.has(c.id)) : filtered;
-    downloadCSV(`customers-${scope}-${Date.now()}.csv`,
-      src.map((c) => ({
-        id: c.id, name: c.name, email: c.email, phone: c.phone,
-        city: c.city, country: c.country, tier: c.tier, status: c.status,
-        orders: c.orders, concierge: c.concierge, spend: c.spend, aov: c.aov,
-        wallet: c.walletBalance, loyalty: c.loyaltyPoints,
-        marketing: c.marketingOptIn ? "yes" : "no",
-        last_order: c.lastOrderAt, created_at: c.createdAt,
-        tags: c.tags.join("|"),
-      })));
+  async function exportCSV(scope: "filtered" | "selected" | "all") {
+    const src = scope === "selected"
+      ? customers.filter((c) => selection.has(c.id))
+      : filtered;
+    const clientExport = () =>
+      downloadCSV(`customers-${scope}-loaded-${Date.now()}.csv`,
+        src.map((c) => ({
+          id: c.id, name: c.name, email: c.email, phone: c.phone,
+          city: c.city, country: c.country, tier: c.tier, status: c.status,
+          orders: c.orders, concierge: c.concierge, spend: c.spend, aov: c.aov,
+          wallet: c.walletBalance, loyalty: c.loyaltyPoints,
+          marketing: c.marketingOptIn ? "yes" : "no",
+          last_order: c.lastOrderAt, created_at: c.createdAt,
+          tags: c.tags.join("|"),
+        })));
+    if (scope === "selected") {
+      clientExport();
+      return;
+    }
+    try {
+      await downloadAdminExport(
+        ordersAdminApi.exportCustomersCsv({
+          q: query.trim() || undefined,
+          tab: tab === "all" ? "all" : tab,
+        }),
+        `customers-${scope}-${Date.now()}.csv`,
+      );
+      toast.success("Export downloaded");
+    } catch {
+      clientExport();
+      toast.info("Exported loaded rows only (server export unavailable)");
+    }
   }
 
   return (
@@ -145,7 +179,7 @@ export function AdminCustomers() {
         subtitle="Every ASL ORIGINALS shopper, concierge client and VIP in one place."
         actions={
           <>
-            <button onClick={() => exportCSV(selection.size ? "selected" : "filtered")}
+            <button onClick={() => void exportCSV(selection.size ? "selected" : "filtered")}
               className="h-9 px-3 rounded-md border border-black/10 bg-white text-[13px] font-medium inline-flex items-center gap-1.5 hover:bg-black/[0.04]">
               <Download className="h-4 w-4" /> Export
             </button>
@@ -162,7 +196,13 @@ export function AdminCustomers() {
 
       <div className="mb-4 border-b border-black/10 flex items-center gap-1 overflow-x-auto no-scrollbar">
         {TABS.map((t) => {
-          const count = t.id === "all" ? customers.length : customers.filter((c) => c.status === t.id).length;
+          const tabs = listMeta.tabs;
+          const count =
+            tabs && Object.keys(tabs).length > 0
+              ? Number(tabs[t.id] ?? tabs[t.id === "all" ? "all" : t.id] ?? 0)
+              : t.id === "all"
+                ? (listMeta.total ?? customers.length)
+                : customers.filter((c) => c.status === t.id).length;
           const on = tab === t.id;
           return (
             <button key={t.id} onClick={() => { setTab(t.id); setPage(1); }}
@@ -217,7 +257,7 @@ export function AdminCustomers() {
         <div className="sticky top-14 z-20 mb-3 bg-ink text-white rounded-lg px-4 py-2.5 flex items-center gap-3 shadow-lg">
           <div className="text-[13px] font-medium">{selection.size} selected</div>
           <div className="flex-1" />
-          <button onClick={() => exportCSV("selected")} className="text-[12px] px-3 h-8 rounded-md bg-white/10 hover:bg-white/20 inline-flex items-center gap-1.5">
+          <button onClick={() => void exportCSV("selected")} className="text-[12px] px-3 h-8 rounded-md bg-white/10 hover:bg-white/20 inline-flex items-center gap-1.5">
             <Download className="h-3.5 w-3.5" /> Export
           </button>
           <button onClick={() => selection.forEach((id) => setStatus(id, "flagged"))}

@@ -5,6 +5,7 @@ import {
   useCohortAnalytics,
   type Window, type Metric,
 } from "@/lib/analytics-cohorts-store";
+import { formatKpiDelta, kpiDeltaFraction } from "@/lib/analytics-kpi";
 import { downloadCSV } from "@/lib/admin-export";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -44,7 +45,7 @@ function formatCell(v: number | null, metric: Metric) {
 export function AdminAnalyticsCohorts() {
   const {
     window, metric, setWindow, setMetric, hydrate,
-    cohorts, curve, ltv, segments, totalNew, m1, m3, m6, m12, size,
+    cohorts, curve, ltv, segments, totalNew, m1, m3, m6, m12, size, kpis,
   } = useCohortAnalytics();
 
   useEffect(() => {
@@ -120,13 +121,13 @@ export function AdminAnalyticsCohorts() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <KPI label="New customers" value={data.totalNew.toLocaleString()} delta={0.11} icon={<Users className="h-4 w-4" />} />
-        <KPI label="M1 retention" value={`${(data.m1 * 100).toFixed(0)}%`} delta={0.03} icon={<Repeat className="h-4 w-4" />} />
-        <KPI label="M6 retention" value={`${(data.m6 * 100).toFixed(0)}%`} delta={-0.008} invert icon={<TrendingUp className="h-4 w-4" />} />
+        <KPI label="New customers" value={data.totalNew.toLocaleString()} delta={kpiDeltaFraction(kpis.totalNew)} icon={<Users className="h-4 w-4" />} />
+        <KPI label="M1 retention" value={`${(data.m1 * 100).toFixed(0)}%`} delta={kpiDeltaFraction(kpis.m1)} icon={<Repeat className="h-4 w-4" />} />
+        <KPI label="M6 retention" value={`${(data.m6 * 100).toFixed(0)}%`} delta={kpiDeltaFraction(kpis.m6)} invert icon={<TrendingUp className="h-4 w-4" />} />
         <KPI
           label="Avg. LTV"
           value={naira(data.ltv[data.ltv.length - 1]?.ltv ?? 0)}
-          delta={0.16}
+          delta={kpiDeltaFraction(kpis.ltv)}
           icon={<Sparkles className="h-4 w-4" />}
         />
       </div>
@@ -304,9 +305,9 @@ export function AdminAnalyticsCohorts() {
 
 function KPI({
   label, value, delta, icon, invert = false,
-}: { label: string; value: string; delta: number; icon?: React.ReactNode; invert?: boolean }) {
-  const up = delta >= 0;
-  const good = invert ? !up : up;
+}: { label: string; value: string; delta: number | null; icon?: React.ReactNode; invert?: boolean }) {
+  const up = delta != null ? delta >= 0 : true;
+  const good = delta == null ? true : invert ? !up : up;
   return (
     <Card>
       <div className="flex items-center justify-between">
@@ -314,9 +315,9 @@ function KPI({
         <div className="text-muted-foreground">{icon}</div>
       </div>
       <div className="font-display text-[22px] font-bold mt-1">{value}</div>
-      <div className={`text-[12px] inline-flex items-center gap-1 mt-1 ${good ? "text-ink" : "text-rose-700"}`}>
-        {up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-        {up ? "+" : ""}{(delta * 100).toFixed(1)}%
+      <div className={`text-[12px] inline-flex items-center gap-1 mt-1 ${delta == null ? "text-muted-foreground" : good ? "text-ink" : "text-rose-700"}`}>
+        {delta != null && (up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />)}
+        {formatKpiDelta(delta)}
       </div>
     </Card>
   );

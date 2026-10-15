@@ -5,6 +5,7 @@ import {
   useSalesAnalytics, getSalesData, CHANNEL_LABEL, COUNTRY_LABEL,
   type Range, type Channel, type Country,
 } from "@/lib/analytics-sales-store";
+import { kpiDeltaFraction } from "@/lib/analytics-kpi";
 import { downloadCSV } from "@/lib/admin-export";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -35,7 +36,7 @@ function shortDate(iso: string) {
 export function AdminAnalyticsSales() {
   const {
     range, channel, country, setRange, setChannel, setCountry, hydrate,
-    series, channels, countries, categories, products, totalRevenue, totalOrders,
+    series, channels, countries, categories, products, totalRevenue, totalOrders, kpis,
   } = useSalesAnalytics();
 
   useEffect(() => {
@@ -46,14 +47,6 @@ export function AdminAnalyticsSales() {
     () => ({ series, channels, countries, categories, products, totalRevenue, totalOrders }),
     [series, channels, countries, categories, products, totalRevenue, totalOrders],
   );
-  const prev = useMemo(() => {
-    return {
-      revenue: Math.round(data.totalRevenue * 0.86),
-      orders: Math.round(data.totalOrders * 0.91),
-      visitors: Math.round(data.series.reduce((s, p) => s + p.visitors, 0) * 0.88),
-    };
-  }, [data]);
-
   const revenue = data.totalRevenue;
   const orders = data.totalOrders;
   const visitors = data.series.reduce((s, p) => s + p.visitors, 0);
@@ -63,10 +56,10 @@ export function AdminAnalyticsSales() {
   const conv = visitors ? orders / visitors : 0;
   const netRevenue = revenue - refunds - discounts;
 
-  const revenueDelta = (revenue - prev.revenue) / (prev.revenue || 1);
-  const ordersDelta = (orders - prev.orders) / (prev.orders || 1);
-  const visitorsDelta = (visitors - prev.visitors) / (prev.visitors || 1);
-  const aovDelta = (aov - Math.round(prev.revenue / (prev.orders || 1))) / (Math.round(prev.revenue / (prev.orders || 1)) || 1);
+  const revenueDelta = kpiDeltaFraction(kpis.revenue);
+  const ordersDelta = kpiDeltaFraction(kpis.orders);
+  const visitorsDelta = kpiDeltaFraction(kpis.visitors);
+  const aovDelta = kpiDeltaFraction(kpis.aov);
 
   const exportRows = () => {
     downloadCSV(
@@ -361,12 +354,12 @@ export function AdminAnalyticsSales() {
 function KPI({
   label, value, delta, data, sparkKey, icon,
 }: {
-  label: string; value: string; delta: number;
+  label: string; value: string; delta: number | null;
   data: ReturnType<typeof getSalesData>["series"];
   sparkKey: "revenue" | "orders" | "visitors";
   icon?: React.ReactNode;
 }) {
-  const up = delta >= 0;
+  const up = delta != null ? delta >= 0 : true;
   return (
     <Card>
       <div className="flex items-center justify-between">
@@ -375,9 +368,9 @@ function KPI({
       </div>
       <div className="font-display text-[22px] font-bold mt-1">{value}</div>
       <div className="flex items-center justify-between mt-1">
-        <div className={`text-[12px] inline-flex items-center gap-1 ${up ? "text-ink" : "text-rose-700"}`}>
-          {up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-          {pct(delta)}
+        <div className={`text-[12px] inline-flex items-center gap-1 ${delta == null ? "text-muted-foreground" : up ? "text-ink" : "text-rose-700"}`}>
+          {delta != null && (up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />)}
+          {delta == null ? "—" : pct(delta)}
         </div>
         <div className="h-8 w-24">
           <ResponsiveContainer>

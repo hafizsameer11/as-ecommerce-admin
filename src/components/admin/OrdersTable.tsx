@@ -5,12 +5,24 @@ import { Search, Filter, Download, ArrowUpDown, ChevronRight, X, ChevronLeft } f
 import type { OrderStatus } from "@/components/account/ordersData";
 import { PageHeader } from "./AdminShell";
 import { Card, Chip, StatusPill, TableWrap, naira, Empty } from "./ui";
-import { downloadCSV } from "@/lib/admin-export";
+import { downloadAdminExport, downloadCSV } from "@/lib/admin-export";
 import { ordersAdminApi, koboToNaira, type AdminOrderRow } from "@/lib/api/orders";
 
 const STATUS_TABS = ["All", "Processing", "Shipped", "Delivered", "Cancelled", "Returned"] as const;
 type SortKey = "date" | "total";
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 50;
+
+function tabToApiStatus(tab: (typeof STATUS_TABS)[number]): string | undefined {
+  if (tab === "All") return undefined;
+  const map: Record<string, string> = {
+    Processing: "processing",
+    Shipped: "shipped",
+    Delivered: "delivered",
+    Cancelled: "cancelled",
+    Returned: "returned",
+  };
+  return map[tab];
+}
 
 type AdminOrderView = {
   id: string;
@@ -53,6 +65,8 @@ function mapRow(o: AdminOrderRow): AdminOrderView {
 type OrderListMeta = {
   kpis?: Record<string, unknown>;
   tabs?: Record<string, number>;
+  pageCount?: number;
+  total?: number;
 };
 
 export function OrdersTable() {
@@ -69,21 +83,49 @@ export function OrdersTable() {
   const [minTotal, setMinTotal] = useState<string>("");
   const [maxTotal, setMaxTotal] = useState<string>("");
   const [page, setPage] = useState(1);
+  const [serverPageCount, setServerPageCount] = useState(1);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   const reload = async () => {
+    setLoading(true);
     try {
-      const { data, meta } = await ordersAdminApi.list();
+      const apiStatus = tabToApiStatus(status);
+      const { data, meta } = await ordersAdminApi.list({
+        page,
+        pageSize: PAGE_SIZE,
+        q: q.trim() || undefined,
+        status: apiStatus,
+        tab: status === "All" ? "all" : apiStatus,
+      });
       setOrders(data.map(mapRow));
-      if (meta) setListMeta({ kpis: meta.kpis as Record<string, unknown>, tabs: meta.tabs as Record<string, number> });
+      if (meta) {
+        setListMeta({
+          kpis: meta.kpis as Record<string, unknown>,
+          tabs: meta.tabs as Record<string, number>,
+          pageCount: Number(meta.pageCount ?? 1),
+          total: Number(meta.total ?? data.length),
+        });
+        setServerPageCount(Math.max(1, Number(meta.pageCount ?? 1)));
+        setServerTotal(Number(meta.total ?? data.length));
+      } else {
+        setServerPageCount(1);
+        setServerTotal(data.length);
+      }
     } catch (err) {
       console.warn("[admin-orders]", err);
       toast.error(err instanceof Error ? err.message : "Failed to load orders");
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    void reload();
-  }, []);
+    const t = window.setTimeout(() => {
+      void reload();
+    }, q.trim() ? 300 : 0);
+    return () => window.clearTimeout(t);
+  }, [page, status, q]);
 
   const updateStatus = async (ids: string[], next: OrderStatus) => {
     const statusMap: Record<OrderStatus, string> = {
@@ -131,14 +173,26 @@ export function OrdersTable() {
   }, [orders, q, status, sortKey, sortDesc, payment, minTotal, maxTotal]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { All: orders.length };
+    const tabs = listMeta.tabs;
+    if (tabs && Object.keys(tabs).length > 0) {
+      const c: Record<string, number> = {
+        All: Number(tabs.all ?? tabs.All ?? serverTotal ?? orders.length),
+        Processing: Number(tabs.processing ?? tabs.Processing ?? 0),
+        Shipped: Number(tabs.shipped ?? tabs.Shipped ?? 0),
+        Delivered: Number(tabs.delivered ?? tabs.Delivered ?? 0),
+        Cancelled: Number(tabs.cancelled ?? tabs.Cancelled ?? 0),
+        Returned: Number(tabs.returned ?? tabs.Returned ?? 0),
+      };
+      return c;
+    }
+    const c: Record<string, number> = { All: serverTotal || orders.length };
     for (const o of orders) c[o.status] = (c[o.status] ?? 0) + 1;
     return c;
-  }, [orders]);
+  }, [orders, listMeta.tabs, serverTotal]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = serverPageCount;
   const currentPage = Math.min(page, totalPages);
-  const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const pageRows = filtered;
   const totalValue = filtered.reduce((n, o) => n + o.total, 0);
 
   const toggleSort = (key: SortKey) => {
@@ -165,14 +219,32 @@ export function OrdersTable() {
     });
   };
 
-  const exportRows = (rows: typeof orders) =>
+  const exportRowsClient = (rows: typeof orders, label: string) =>
     downloadCSV(
-      `asl-orders-${new Date().toISOString().slice(0, 10)}.csv`,
+      `asl-orders-${label}-${new Date().toISOString().slice(0, 10)}.csv`,
       rows.map((o) => ({
         id: o.id, date: o.date, status: o.status, items: o.itemsCount,
         payment: o.payment, total: o.total, customer: o.contact?.email ?? "guest",
       })),
     );
+
+  const exportRows = async (scope: "filtered" | "all" | "selected", rows: typeof orders) => {
+    const apiStatus = tabToApiStatus(status);
+    try {
+      await downloadAdminExport(
+        ordersAdminApi.exportCsv({
+          q: scope === "selected" ? undefined : q.trim() || undefined,
+          status: scope === "all" ? undefined : apiStatus,
+          tab: status === "All" ? "all" : apiStatus,
+        }),
+        `asl-orders-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      toast.success("Export downloaded");
+    } catch {
+      exportRowsClient(rows, `${scope}-loaded-rows-only`);
+      toast.info("Exported loaded rows only (server export unavailable)");
+    }
+  };
 
   const resetFilters = () => { setPayment("all"); setMinTotal(""); setMaxTotal(""); setPage(1); };
   const activeFilters = (payment !== "all" ? 1 : 0) + (minTotal ? 1 : 0) + (maxTotal ? 1 : 0);
@@ -212,7 +284,7 @@ export function OrdersTable() {
     <div className="p-6 max-w-[1400px] mx-auto">
       <PageHeader
         title="Orders"
-        subtitle={`${filtered.length} of ${orders.length} orders · ${naira(totalValue)} filtered value`}
+        subtitle={`${serverTotal || filtered.length} orders · ${naira(totalValue)} on this page`}
         actions={
           <>
             <div className="relative">
@@ -227,19 +299,19 @@ export function OrdersTable() {
                   <div className="fixed inset-0 z-20" onClick={() => setShowExport(false)} />
                   <div className="absolute right-0 top-10 z-30 w-56 bg-white border border-border rounded-md shadow-lg py-1">
                     <button
-                      onClick={() => { exportRows(filtered); setShowExport(false); }}
+                      onClick={() => { void exportRows("filtered", filtered); setShowExport(false); }}
                       className="w-full text-left px-3 py-2 text-[12px] hover:bg-black/5"
                     >
                       Export filtered ({filtered.length})
                     </button>
                     <button
-                      onClick={() => { exportRows(orders); setShowExport(false); }}
+                      onClick={() => { void exportRows("all", orders); setShowExport(false); }}
                       className="w-full text-left px-3 py-2 text-[12px] hover:bg-black/5"
                     >
                       Export all orders ({orders.length})
                     </button>
                     <button
-                      onClick={() => { exportRows(orders.filter((o) => selected.has(o.id))); setShowExport(false); }}
+                      onClick={() => { void exportRows("selected", orders.filter((o) => selected.has(o.id))); setShowExport(false); }}
                       disabled={selected.size === 0}
                       className="w-full text-left px-3 py-2 text-[12px] hover:bg-black/5 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
@@ -282,10 +354,7 @@ export function OrdersTable() {
           },
           {
             label: "This month revenue",
-            value: naira(
-              Number(listMeta.kpis?.revenue30d ?? 0) ||
-                orders.reduce((n, o) => n + o.total, 0),
-            ),
+            value: naira(koboToNaira(Number(listMeta.kpis?.revenue30d ?? 0))),
             tone: "gold" as const,
           },
         ].map((k) => (
@@ -351,7 +420,7 @@ export function OrdersTable() {
           <span className="text-white/30">·</span>
           <button onClick={bulkPrint} className="hover:text-gold">Print slips</button>
           <span className="text-white/30">·</span>
-          <button onClick={() => exportRows(orders.filter((o) => selected.has(o.id)))} className="hover:text-gold">Export</button>
+          <button onClick={() => void exportRows("selected", orders.filter((o) => selected.has(o.id)))} className="hover:text-gold">Export</button>
           <span className="text-white/30">·</span>
           <button onClick={bulkCancel} className="text-rose-300 hover:text-rose-100">Cancel</button>
           <div className="flex-1" />
@@ -437,7 +506,7 @@ export function OrdersTable() {
       {/* Pagination */}
       <div className="mt-3 flex items-center gap-3 text-[12px] text-muted-foreground">
         <span>
-          Showing {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1} - {Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length}
+          {loading ? "Loading…" : `Page ${currentPage} of ${totalPages} · ${serverTotal || filtered.length} total`}
         </span>
         <div className="flex-1" />
         <button

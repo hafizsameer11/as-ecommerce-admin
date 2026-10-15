@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { analyticsAdminApi } from "@/lib/api/platform";
 import { koboToNaira } from "@/lib/api/client";
+import { mapAnalyticsKpis, type AnalyticsKpi } from "@/lib/analytics-kpi";
 
 export type Range = "7d" | "30d" | "90d" | "12m";
 export type Category = "all" | "footwear" | "fashion" | "fragrance" | "accessories" | "jewellery";
@@ -53,6 +54,7 @@ export type ProductData = {
 type Sort = "revenue" | "units" | "views" | "conv" | "margin";
 
 type State = ProductData & {
+  kpis: Record<string, AnalyticsKpi>;
   range: Range;
   category: Category;
   sort: Sort;
@@ -116,6 +118,7 @@ function mapRow(p: Record<string, unknown>): ProductAnalyticsRow {
 
 export const useProductAnalytics = create<State>()((set, get) => ({
   ...emptyData(),
+  kpis: {},
   range: "30d",
   category: "all",
   sort: "revenue",
@@ -163,11 +166,13 @@ export const useProductAnalytics = create<State>()((set, get) => ({
         term: String(z.term ?? ""),
         volume: Number(z.volume ?? 0),
       }));
+      const kpis = mapAnalyticsKpis(d.kpis, ["revenue"]);
       set({
         range,
         category,
         sort,
         hydrated: true,
+        kpis,
         rows,
         categories,
         brands,

@@ -4,7 +4,7 @@ import {
   CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator,
 } from "@/components/ui/command";
 import { useAdmin } from "@/lib/admin-role-store";
-import { filterNavForRole } from "./nav-config";
+import { filterNavForAccess } from "./nav-config";
 import { searchAdminApi } from "@/lib/api/platform";
 
 type SearchHit = { id: string; title: string; subtitle: string; link: string; amount?: number; status?: string };
@@ -15,7 +15,8 @@ type Props = { open: boolean; onOpenChange: (v: boolean) => void };
 export function CommandPalette({ open, onOpenChange }: Props) {
   const nav = useNavigate();
   const role = useAdmin((s) => s.role);
-  const groups = filterNavForRole(role);
+  const permissions = useAdmin((s) => s.permissions);
+  const groups = filterNavForAccess(role, permissions);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchGroup[]>([]);
   const [searching, setSearching] = useState(false);

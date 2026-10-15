@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, HelpCircle, Search, LogOut, ChevronDown } from "lucide-react";
+import { Bell, HelpCircle, Search, LogOut } from "lucide-react";
 import { ADMIN_ROLES, useAdmin } from "@/lib/admin-role-store";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -12,7 +12,7 @@ type Props = { onOpenPalette: () => void };
 
 export function AdminTopbar({ onOpenPalette }: Props) {
   const nav = useNavigate();
-  const { name, email, role, setRole, signOut } = useAdmin();
+  const { name, email, role, signOut } = useAdmin();
   const hydrateActivity = useActivity((s) => s.hydrate);
   const unread = useActivity((s) => s.entries.length);
   const roleMeta = ADMIN_ROLES.find((r) => r.id === role)!;
@@ -53,34 +53,12 @@ export function AdminTopbar({ onOpenPalette }: Props) {
           <HelpCircle className="h-4 w-4" />
         </button>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="h-9 px-2.5 flex items-center gap-2 rounded-md hover:bg-black/5 text-[12px]">
-              <span className="h-6 w-6 rounded-full bg-gold/15 text-gold grid place-items-center text-[10px] font-bold">
-                {roleMeta.short}
-              </span>
-              <span className="font-semibold">{roleMeta.label}</span>
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="text-[10px] tracking-[0.15em] uppercase text-muted-foreground">
-              Switch persona
-            </DropdownMenuLabel>
-            {ADMIN_ROLES.map((r) => (
-              <DropdownMenuItem
-                key={r.id}
-                onClick={() => setRole(r.id)}
-                className={role === r.id ? "font-semibold bg-black/5" : ""}
-              >
-                <span className="h-5 w-5 rounded-full bg-gold/15 text-gold grid place-items-center text-[9px] font-bold mr-2">
-                  {r.short}
-                </span>
-                {r.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="h-9 px-2.5 flex items-center gap-2 text-[12px]" title="Your role">
+          <span className="h-6 w-6 rounded-full bg-gold/15 text-gold grid place-items-center text-[10px] font-bold">
+            {roleMeta.short}
+          </span>
+          <span className="font-semibold hidden sm:inline">{roleMeta.label}</span>
+        </div>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

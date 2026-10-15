@@ -28,7 +28,8 @@ const SOURCE_TONE: Record<EntrySource, Parameters<typeof Chip>[0]["tone"]> = {
 
 export function AdminLedger() {
   const {
-    accounts, entries, addEntry, postEntry, voidEntry, reseed, hydrate,
+    accounts, entries, trialBalances, entriesPage, entriesPageCount,
+    addEntry, postEntry, voidEntry, reseed, hydrate, loadTrialBalance,
   } = useLedger();
   useEffect(() => {
     void hydrate();
@@ -40,6 +41,10 @@ export function AdminLedger() {
   const [source, setSource] = useState<EntrySource | "all">("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (tab === "trial") void loadTrialBalance();
+  }, [tab, loadTrialBalance]);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -55,7 +60,10 @@ export function AdminLedger() {
       .sort((a, b) => b.date - a.date);
   }, [entries, q, status, source]);
 
-  const balances = useMemo(() => computeBalances(accounts, entries), [accounts, entries]);
+  const balances = useMemo(() => {
+    if (trialBalances.length) return trialBalances;
+    return computeBalances(accounts, entries);
+  }, [accounts, entries, trialBalances]);
 
   const kpis = useMemo(() => {
     const posted = entries.filter((e) => e.status === "posted");

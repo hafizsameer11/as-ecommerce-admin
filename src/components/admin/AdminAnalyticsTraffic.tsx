@@ -5,6 +5,7 @@ import {
   useTrafficAnalytics, getTrafficData, SOURCE_LABEL, DEVICE_LABEL,
   type Range, type Device, type Source,
 } from "@/lib/analytics-traffic-store";
+import { formatKpiDelta, kpiDeltaFraction } from "@/lib/analytics-kpi";
 import { downloadCSV } from "@/lib/admin-export";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -47,7 +48,7 @@ export function AdminAnalyticsTraffic() {
   const {
     range, device, source, setRange, setDevice, setSource, hydrate,
     series, sources, devices, countries, pages, referrers, funnel,
-    totalVisitors, totalSessions, totalPageviews, bounceRate, avgSessionSec, pagesPerSession,
+    totalVisitors, totalSessions, totalPageviews, bounceRate, avgSessionSec, pagesPerSession, kpis,
   } = useTrafficAnalytics();
 
   useEffect(() => {
@@ -63,17 +64,10 @@ export function AdminAnalyticsTraffic() {
       totalVisitors, totalSessions, totalPageviews, bounceRate, avgSessionSec, pagesPerSession],
   );
 
-  const prev = useMemo(() => ({
-    visitors: Math.round(data.totalVisitors * 0.89),
-    sessions: Math.round(data.totalSessions * 0.92),
-    bounceRate: data.bounceRate * 1.08,
-    avgSessionSec: Math.round(data.avgSessionSec * 0.94),
-  }), [data]);
-
-  const dV = (data.totalVisitors - prev.visitors) / (prev.visitors || 1);
-  const dS = (data.totalSessions - prev.sessions) / (prev.sessions || 1);
-  const dB = (data.bounceRate - prev.bounceRate) / (prev.bounceRate || 1);
-  const dT = (data.avgSessionSec - prev.avgSessionSec) / (prev.avgSessionSec || 1);
+  const dV = kpiDeltaFraction(kpis.visitors);
+  const dS = kpiDeltaFraction(kpis.sessions);
+  const dB = kpiDeltaFraction(kpis.bounceRate);
+  const dT = kpiDeltaFraction(kpis.avgSessionSec);
 
   const exportRows = () => {
     downloadCSV(
@@ -392,13 +386,13 @@ export function AdminAnalyticsTraffic() {
 function KPI({
   label, value, delta, icon, data, k, invert = false,
 }: {
-  label: string; value: string; delta: number; icon?: React.ReactNode;
+  label: string; value: string; delta: number | null; icon?: React.ReactNode;
   data: ReturnType<typeof getTrafficData>["series"];
   k: "visitors" | "sessions" | "pageviews" | "bounces";
   invert?: boolean;
 }) {
-  const up = delta >= 0;
-  const good = invert ? !up : up;
+  const up = delta != null ? delta >= 0 : true;
+  const good = delta == null ? true : invert ? !up : up;
   return (
     <Card>
       <div className="flex items-center justify-between">
@@ -407,9 +401,9 @@ function KPI({
       </div>
       <div className="font-display text-[22px] font-bold mt-1">{value}</div>
       <div className="flex items-center justify-between mt-1">
-        <div className={`text-[12px] inline-flex items-center gap-1 ${good ? "text-ink" : "text-rose-700"}`}>
-          {up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-          {pct(delta)}
+        <div className={`text-[12px] inline-flex items-center gap-1 ${delta == null ? "text-muted-foreground" : good ? "text-ink" : "text-rose-700"}`}>
+          {delta != null && (up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />)}
+          {formatKpiDelta(delta)}
         </div>
         <div className="h-8 w-24">
           <ResponsiveContainer>

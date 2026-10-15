@@ -53,7 +53,8 @@ export function ReturnsPage() {
 
   const hydrate = async () => {
     try {
-      const { data } = await ordersAdminApi.listReturns({ pageSize: 100 });
+      const { data, meta } = await ordersAdminApi.listReturns({ page: 1, pageSize: 50 });
+      void meta;
       setItems(data.map(mapRow));
     } catch (err) {
       console.warn("[returns] hydrate failed", err);

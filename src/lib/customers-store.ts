@@ -88,10 +88,25 @@ function mapCustomer(c: AdminCustomerRow): Customer {
   };
 }
 
+export type CustomerListMeta = {
+  tabs?: Record<string, number>;
+  kpis?: Record<string, unknown>;
+  pageCount?: number;
+  total?: number;
+};
+
+type HydrateQuery = {
+  page?: number;
+  pageSize?: number;
+  tab?: string;
+  q?: string;
+};
+
 type State = {
   customers: Customer[];
+  listMeta: CustomerListMeta;
   hydrated: boolean;
-  hydrate: () => Promise<void>;
+  hydrate: (query?: HydrateQuery) => Promise<void>;
   setStatus: (id: string, s: CustomerStatus) => Promise<void>;
   setTier: (id: string, t: CustomerTier) => Promise<void>;
   toggleMarketing: (id: string) => Promise<void>;
@@ -106,13 +121,29 @@ type State = {
 
 export const useCustomers = create<State>()((set, get) => ({
   customers: [],
+  listMeta: {},
   hydrated: false,
-  hydrate: async () => {
+  hydrate: async (query) => {
     try {
-      const { data } = await ordersAdminApi.listCustomers({ pageSize: 100 });
-      set({ customers: data.map(mapCustomer), hydrated: true });
+      const { data, meta } = await ordersAdminApi.listCustomers({
+        page: query?.page ?? 1,
+        pageSize: query?.pageSize ?? 50,
+        tab: query?.tab,
+        q: query?.q,
+      });
+      set({
+        customers: data.map(mapCustomer),
+        listMeta: {
+          tabs: meta?.tabs as Record<string, number> | undefined,
+          kpis: meta?.kpis as Record<string, unknown> | undefined,
+          pageCount: Number(meta?.pageCount ?? 1),
+          total: Number(meta?.total ?? data.length),
+        },
+        hydrated: true,
+      });
     } catch (err) {
       console.warn("[customers] hydrate failed", err);
+      toast.error(err instanceof ApiError ? err.message : "Failed to load customers");
       set({ hydrated: true });
     }
   },
@@ -124,6 +155,7 @@ export const useCustomers = create<State>()((set, get) => ({
       await ordersAdminApi.setCustomerStatus(id, s);
     } catch (err) {
       console.warn("[customers] status sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not update status");
       await get().hydrate();
     }
   },
@@ -135,6 +167,7 @@ export const useCustomers = create<State>()((set, get) => ({
       await ordersAdminApi.setCustomerTier(id, t);
     } catch (err) {
       console.warn("[customers] tier sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not update tier");
       await get().hydrate();
     }
   },
@@ -171,6 +204,7 @@ export const useCustomers = create<State>()((set, get) => ({
       await get().hydrate();
     } catch (err) {
       console.warn("[customers] note sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not save note");
       await get().hydrate();
     }
   },
@@ -184,6 +218,7 @@ export const useCustomers = create<State>()((set, get) => ({
       await ordersAdminApi.removeCustomerNote(id, noteId);
     } catch (err) {
       console.warn("[customers] remove note sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not remove note");
       await get().hydrate();
     }
   },
@@ -197,6 +232,7 @@ export const useCustomers = create<State>()((set, get) => ({
       await ordersAdminApi.addCustomerTag(id, tag);
     } catch (err) {
       console.warn("[customers] tag sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not add tag");
       await get().hydrate();
     }
   },
@@ -210,6 +246,7 @@ export const useCustomers = create<State>()((set, get) => ({
       await ordersAdminApi.removeCustomerTag(id, tag);
     } catch (err) {
       console.warn("[customers] remove tag sync", err);
+      toast.error(err instanceof ApiError ? err.message : "Could not remove tag");
       await get().hydrate();
     }
   },
@@ -231,8 +268,13 @@ export const useCustomers = create<State>()((set, get) => ({
     }
   },
   remove: async (id) => {
-    await ordersAdminApi.removeCustomer(id);
-    set((st) => ({ customers: st.customers.filter((c) => c.id !== id) }));
+    try {
+      await ordersAdminApi.removeCustomer(id);
+      set((st) => ({ customers: st.customers.filter((c) => c.id !== id) }));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not remove customer");
+      throw err;
+    }
   },
   reset: () => void get().hydrate(),
 }));

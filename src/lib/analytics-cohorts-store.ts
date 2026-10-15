@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { analyticsAdminApi } from "@/lib/api/platform";
 import { koboToNaira } from "@/lib/api/client";
+import { mapAnalyticsKpis, type AnalyticsKpi } from "@/lib/analytics-kpi";
 
 export type Window = "6m" | "12m" | "24m";
 export type Metric = "retention" | "revenue" | "orders";
@@ -25,6 +26,7 @@ export type CohortData = {
 };
 
 type State = CohortData & {
+  kpis: Record<string, AnalyticsKpi>;
   window: Window;
   metric: Metric;
   hydrated: boolean;
@@ -48,6 +50,7 @@ const emptyData = (): CohortData => ({
 
 export const useCohortAnalytics = create<State>()((set, get) => ({
   ...emptyData(),
+  kpis: {},
   window: "12m",
   metric: "retention",
   hydrated: false,
@@ -82,10 +85,12 @@ export const useCohortAnalytics = create<State>()((set, get) => ({
         retention: Number(s.retention ?? 0),
         ltv: koboToNaira(Number(s.ltv ?? 0)),
       }));
+      const kpis = mapAnalyticsKpis(d.kpis, metric === "revenue" ? ["ltv"] : []);
       set({
         window,
         metric,
         hydrated: true,
+        kpis,
         cohorts,
         curve,
         ltv,

@@ -61,6 +61,8 @@ function asShopProduct(p: AdminProduct): Product {
 export function AdminProducts() {
   const products = useProducts((s) => s.products);
   const countsApi = useProducts((s) => s.counts);
+  const apiPageCount = useProducts((s) => s.pageCount);
+  const apiPage = useProducts((s) => s.page);
   const hydrated = useProducts((s) => s.hydrated);
   const hydrate = useProducts((s) => s.hydrate);
   const createProduct = useProducts((s) => s.create);
@@ -494,6 +496,15 @@ export function AdminProducts() {
             >
               <ChevronRight className="h-4 w-4" />
             </button>
+            {apiPage < apiPageCount && (
+              <button
+                type="button"
+                onClick={() => void hydrate({ page: apiPage + 1, append: true })}
+                className="ml-2 h-7 px-2 rounded border border-black/10 hover:bg-black/[0.04]"
+              >
+                Load more from server
+              </button>
+            )}
           </div>
         </div>
       </Card>

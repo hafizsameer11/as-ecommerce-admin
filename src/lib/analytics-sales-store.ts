@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { analyticsAdminApi } from "@/lib/api/platform";
 import { koboToNaira } from "@/lib/api/client";
+import { mapAnalyticsKpis, type AnalyticsKpi } from "@/lib/analytics-kpi";
 
 export type Channel = "web" | "mobile" | "pwa" | "concierge";
 export type Country = "NG" | "GB" | "US" | "AE" | "GH" | "ZA" | "KE";
@@ -61,6 +62,7 @@ export type SalesData = {
 };
 
 type State = SalesData & {
+  kpis: Record<string, AnalyticsKpi>;
   range: Range;
   channel: Channel | "all";
   country: Country | "all";
@@ -92,6 +94,7 @@ function asCountry(v: unknown): Country {
 
 export const useSalesAnalytics = create<State>()((set, get) => ({
   ...emptyData(),
+  kpis: {},
   range: "30d",
   channel: "all",
   country: "all",
@@ -151,11 +154,13 @@ export const useSalesAnalytics = create<State>()((set, get) => ({
         refundRate: Number(p.refundRate ?? 0),
         margin: Number(p.margin ?? 0),
       }));
+      const kpis = mapAnalyticsKpis(d.kpis, ["revenue", "aov", "netRevenue", "refunds", "discounts"]);
       set({
         range,
         channel,
         country,
         hydrated: true,
+        kpis,
         series,
         channels,
         countries,

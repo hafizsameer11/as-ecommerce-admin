@@ -97,8 +97,11 @@ export type AdminShipmentRow = {
 };
 
 export const ordersAdminApi = {
-  list: (query: { status?: string; q?: string; page?: number; pageSize?: number } = {}) =>
+  list: (query: { status?: string; q?: string; page?: number; pageSize?: number; tab?: string } = {}) =>
     apiRequestWithMeta<AdminOrderRow[]>(`/admin/orders${qs({ pageSize: 50, ...query })}`),
+
+  exportCsv: (query: { status?: string; q?: string; tab?: string; from?: string; to?: string } = {}) =>
+    `/admin/orders/export${qs(query)}`,
 
   get: (id: string) => apiRequest(`/admin/orders/${encodeURIComponent(id)}`),
 
@@ -149,7 +152,10 @@ export const ordersAdminApi = {
     apiRequest(`/admin/returns/${encodeURIComponent(id)}/refund`, { method: "POST", body }),
 
   listCustomers: (query: { q?: string; page?: number; pageSize?: number; tab?: string; status?: string } = {}) =>
-    apiRequestWithMeta<AdminCustomerRow[]>(`/admin/customers${qs({ pageSize: 100, ...query })}`),
+    apiRequestWithMeta<AdminCustomerRow[]>(`/admin/customers${qs({ pageSize: 50, ...query })}`),
+
+  exportCustomersCsv: (query: { q?: string; tab?: string; status?: string } = {}) =>
+    `/admin/customers/export${qs(query)}`,
 
   getCustomer: (id: string) => apiRequest<AdminCustomerRow>(`/admin/customers/${encodeURIComponent(id)}`),
 
