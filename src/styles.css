@@ -1,0 +1,213 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+@import "flag-icons/css/flag-icons.min.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-gold-deep: var(--gold-deep);
+
+  --color-concierge-cream: var(--concierge-cream);
+  --color-sale: var(--sale);
+  /* Type system (SSENSE-inspired): one grotesque for the whole interface,
+     one editorial serif reserved for rare display moments. */
+  --font-sans: "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-editorial: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-mono: "Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+:root {
+  --radius: 0.25rem;
+
+  /* Brand palette - ASL ORIGINALS official colours */
+  --ink: #0f0f0f;                         /* brand black - text, dark sections */
+  --paper: #faf8f3;                       /* warm off-white - page background */
+  --paper-muted: #f3efe7;                 /* muted paper - subtle surfaces/dividers */
+  --gold: #cc5000;                        /* burnt orange - primary accent (buttons, active states) */
+  --gold-soft: #e8863d;                   /* lighter burnt orange - hairlines, soft accents */
+  --gold-deep: #a03d00;                   /* deeper burnt orange - text on light accent surfaces */
+  --concierge-cream: #edebdf;             /* milk hero background for concierge service */
+
+  --sale: oklch(0.58 0.22 25);            /* sale red */
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--ink);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--ink);
+  --primary: var(--gold);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: var(--paper-muted);
+  --secondary-foreground: var(--ink);
+  --muted: var(--paper-muted);
+  --muted-foreground: oklch(0.45 0.01 60);
+  --accent: var(--paper-muted);
+  --accent-foreground: var(--ink);
+  --destructive: var(--sale);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.92 0 0);
+  --input: oklch(0.92 0 0);
+  --ring: var(--gold);
+}
+
+.dark {
+  --background: var(--ink);
+  --foreground: var(--paper);
+  --card: oklch(0.2 0.005 60);
+  --card-foreground: var(--paper);
+  --popover: oklch(0.2 0.005 60);
+  --popover-foreground: var(--paper);
+  --primary: var(--gold);
+  --primary-foreground: var(--ink);
+  --secondary: oklch(0.25 0.005 60);
+  --secondary-foreground: var(--paper);
+  --muted: oklch(0.25 0.005 60);
+  --muted-foreground: oklch(0.7 0.01 60);
+  --accent: oklch(0.25 0.005 60);
+  --accent-foreground: var(--paper);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html, body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-weight: 400;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  code, pre, kbd, samp {
+    font-family: var(--font-sans);
+  }
+  button, input, select, textarea {
+    font-family: inherit;
+  }
+  html, body {
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar, body::-webkit-scrollbar {
+    display: none;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+}
+
+/* ---- Type roles ---- */
+@utility type-editorial {
+  font-family: var(--font-editorial);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+@utility type-eyebrow {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+@utility type-nav {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@utility type-price {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility type-body {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  line-height: 1.55;
+}
+
+@utility no-scrollbar {
+  &::-webkit-scrollbar { display: none; }
+  scrollbar-width: none;
+}
+
+/* Prevent iOS Safari auto-zoom on focus: form controls must be >= 16px */
+@media (max-width: 1024px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Customer pages use restrained, content-led proportions. */
+.customer-ui .rounded-2xl.border,
+.customer-ui .rounded-3xl.border {
+  border-radius: 0.5rem;
+}
+
+.customer-ui .rounded-2xl.border.p-5,
+.customer-ui .rounded-2xl.border.p-6,
+.customer-ui .rounded-3xl.border.p-5,
+.customer-ui .rounded-3xl.border.p-6 {
+  padding: 0.875rem;
+}
+
+@media (max-width: 767px) {
+  .customer-ui h1.text-3xl,
+  .customer-ui h1.text-4xl {
+    font-size: 1.25rem;
+    line-height: 1.25;
+  }
+
+  .customer-ui .rounded-2xl.border.p-8,
+  .customer-ui .rounded-2xl.border.p-10,
+  .customer-ui .rounded-3xl.border.p-8,
+  .customer-ui .rounded-3xl.border.p-10 {
+    padding: 1rem;
+  }
+}
