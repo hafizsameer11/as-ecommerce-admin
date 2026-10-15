@@ -69,6 +69,8 @@ export type PlacedOrder = Order & {
     tier?: string;
     orders?: number;
   };
+  shipments?: { number: string; carrier: string; trackingNumber?: string | null; status: string }[];
+  pickupBookingNumber?: string | null;
 };
 
 type CreateArgs = {
@@ -287,6 +289,19 @@ function mapDetail(raw: Record<string, unknown>): PlacedOrder {
           orders: cust.orders != null ? Number(cust.orders) : cust.orderCount != null ? Number(cust.orderCount) : undefined,
         }
       : undefined,
+    shipments: Array.isArray(raw.shipments)
+      ? (raw.shipments as Record<string, unknown>[]).map((s) => ({
+          number: String(s.number ?? s.id ?? ""),
+          carrier: String(s.carrier ?? ""),
+          trackingNumber: s.trackingNumber != null ? String(s.trackingNumber) : null,
+          status: String(s.status ?? ""),
+        }))
+      : undefined,
+    pickupBookingNumber: (() => {
+      const pb = raw.pickupBooking as Record<string, unknown> | null | undefined;
+      if (!pb) return null;
+      return pb.number != null ? String(pb.number) : null;
+    })(),
   };
 }
 

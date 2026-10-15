@@ -111,8 +111,17 @@ export const ordersAdminApi = {
       body: { status },
     }),
 
-  fulfill: (id: string, body: Record<string, unknown> = {}) =>
-    apiRequest(`/admin/orders/${encodeURIComponent(id)}/fulfil`, { method: "POST", body }),
+  fulfill: (
+    id: string,
+    body: {
+      carrier: string;
+      service: string;
+      trackingNumber?: string | null;
+      weightKg?: number;
+      cost?: number;
+      notes?: string | null;
+    },
+  ) => apiRequest(`/admin/orders/${encodeURIComponent(id)}/fulfil`, { method: "POST", body }),
 
   refund: (id: string, body: Record<string, unknown> = {}) =>
     apiRequest(`/admin/orders/${encodeURIComponent(id)}/refund`, { method: "POST", body }),
@@ -120,8 +129,10 @@ export const ordersAdminApi = {
   cancel: (id: string, body: { reason: string; refundTo?: string }) =>
     apiRequest(`/admin/orders/${encodeURIComponent(id)}/cancel`, { method: "POST", body }),
 
-  markPaid: (id: string) =>
-    apiRequest(`/admin/orders/${encodeURIComponent(id)}/mark-paid`, { method: "POST", body: {} }),
+  markPaid: (
+    id: string,
+    body: { reference: string; method?: string; note?: string },
+  ) => apiRequest(`/admin/orders/${encodeURIComponent(id)}/mark-paid`, { method: "POST", body }),
 
   addOrderNote: (id: string, body: string) =>
     apiRequest(`/admin/orders/${encodeURIComponent(id)}/notes`, { method: "POST", body: { body } }),

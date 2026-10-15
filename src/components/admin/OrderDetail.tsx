@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   ChevronLeft,
@@ -18,6 +18,27 @@ import { useOrderById, useOrders } from "@/lib/orders-store";
 import { ordersAdminApi } from "@/lib/api/orders";
 import { apiBaseUrl, errorMessage, loadTokens } from "@/lib/api/client";
 import { Card, Chip, StatusPill, naira } from "./ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+const CARRIERS = ["DHL", "FedEx", "UPS", "GIG", "Aramex", "Local", "InHouse"] as const;
+
+/** Manual status advances allowed by PATCH /admin/orders/:id/status */
+const NEXT_STATUS: Record<string, { to: string; label: string }[]> = {
+  paid: [{ to: "processing", label: "Start preparing" }],
+  processing: [{ to: "shipped", label: "Mark shipped" }],
+  shipped: [
+    { to: "out_for_delivery", label: "Out for delivery" },
+    { to: "delivered", label: "Mark delivered" },
+  ],
+  out_for_delivery: [{ to: "delivered", label: "Mark delivered" }],
+};
 
 function paymentLabel(order: NonNullable<ReturnType<typeof useOrderById>>) {
   const ps = (order.paymentStatus || "").toLowerCase();
@@ -63,11 +84,16 @@ async function openOrderPdf(apiId: string, suffix: string, filename: string) {
 }
 
 export function OrderDetail({ id }: { id: string }) {
+  const nav = useNavigate();
   const ensureOrder = useOrders((s) => s.ensureOrder);
   const order = useOrderById(id);
   const [loading, setLoading] = useState(true);
   const [noteDraft, setNoteDraft] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [fulfilOpen, setFulfilOpen] = useState(false);
+  const [carrier, setCarrier] = useState<(typeof CARRIERS)[number]>("DHL");
+  const [service, setService] = useState("Standard");
+  const [trackingNumber, setTrackingNumber] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -123,9 +149,13 @@ export function OrderDetail({ id }: { id: string }) {
 
   const payLabel = paymentLabel(order);
   const payTone = paymentTone(payLabel);
+  const raw = (order.rawStatus || "").toLowerCase();
   const showMarkPaid =
-    payLabel === "Awaiting payment" ||
-    (order.rawStatus || "").toLowerCase().includes("pending_payment");
+    payLabel === "Awaiting payment" || raw.includes("pending_payment");
+  const isPickup = order.delivery === "pickup";
+  const canFulfil =
+    !isPickup && (raw === "paid" || raw === "processing") && !(order.shipments?.length);
+  const statusActions = NEXT_STATUS[raw] ?? [];
 
   const timeline =
     order.timeline.length > 0
@@ -182,30 +212,162 @@ export function OrderDetail({ id }: { id: string }) {
             <button
               type="button"
               disabled={!!busy}
-              onClick={() =>
-                void run("markPaid", async () => {
-                  await ordersAdminApi.markPaid(apiId);
-                }, "Order marked as paid")
-              }
+              onClick={() => {
+                const reference = window.prompt("Bank / offline payment reference:", "");
+                if (!reference?.trim() || reference.trim().length < 3) {
+                  toast.error("Payment reference is required (min 3 characters).");
+                  return;
+                }
+                void run(
+                  "markPaid",
+                  async () => {
+                    await ordersAdminApi.markPaid(apiId, {
+                      reference: reference.trim(),
+                      method: "bank_transfer",
+                    });
+                  },
+                  "Order marked as paid",
+                );
+              }}
               className="h-9 px-3 rounded-md border border-gold bg-gold/10 text-[13px] font-medium hover:bg-gold/20 disabled:opacity-50"
             >
               Mark paid
             </button>
           )}
-          <button
-            type="button"
-            disabled={!!busy}
-            onClick={() =>
-              void run("fulfil", async () => {
-                await ordersAdminApi.fulfill(apiId);
-              }, "Fulfilment started")
-            }
-            className="h-9 px-3 rounded-md bg-ink text-white text-[13px] font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            Fulfil order
-          </button>
+          {isPickup && (raw === "paid" || raw === "processing") && (
+            <button
+              type="button"
+              onClick={() => nav({ to: "/pickups" })}
+              className="h-9 px-3 rounded-md border border-black/10 bg-white text-[13px] font-medium hover:bg-black/[0.04]"
+            >
+              Open pick-ups
+            </button>
+          )}
+          {canFulfil && (
+            <button
+              type="button"
+              disabled={!!busy}
+              onClick={() => setFulfilOpen(true)}
+              className="h-9 px-3 rounded-md bg-ink text-white text-[13px] font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              Fulfil order
+            </button>
+          )}
+          {statusActions.map((a) => (
+            <button
+              key={a.to}
+              type="button"
+              disabled={!!busy}
+              onClick={() =>
+                void run(
+                  `status-${a.to}`,
+                  async () => {
+                    await ordersAdminApi.setStatus(apiId, a.to);
+                  },
+                  a.label,
+                )
+              }
+              className="h-9 px-3 rounded-md border border-black/10 bg-white text-[13px] font-medium hover:bg-black/[0.04] disabled:opacity-50"
+            >
+              {a.label}
+            </button>
+          ))}
+          {order.shipments?.[0]?.number && (
+            <button
+              type="button"
+              onClick={() => nav({ to: "/shipments" })}
+              className="h-9 px-3 rounded-md border border-black/10 bg-white text-[13px] hover:bg-black/[0.04]"
+              title={order.shipments[0].number}
+            >
+              <Truck className="h-3.5 w-3.5 inline mr-1.5" />
+              Shipments
+            </button>
+          )}
         </div>
       </div>
+
+      <Dialog open={fulfilOpen} onOpenChange={setFulfilOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Fulfil order</DialogTitle>
+            <DialogDescription>
+              Creates a shipment and moves the order to Preparing. Carrier and service are required.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <label className="block text-[12px]">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Carrier</span>
+              <select
+                value={carrier}
+                onChange={(e) => setCarrier(e.target.value as (typeof CARRIERS)[number])}
+                className="mt-1 w-full h-10 px-3 rounded-md border border-border bg-white text-[13px]"
+              >
+                {CARRIERS.map((c) => (
+                  <option key={c} value={c}>
+                    {c === "InHouse" ? "In-house" : c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-[12px]">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Service</span>
+              <input
+                value={service}
+                onChange={(e) => setService(e.target.value)}
+                className="mt-1 w-full h-10 px-3 rounded-md border border-border bg-white text-[13px]"
+                placeholder="Standard"
+                required
+              />
+            </label>
+            <label className="block text-[12px]">
+              <span className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">
+                Tracking number (optional)
+              </span>
+              <input
+                value={trackingNumber}
+                onChange={(e) => setTrackingNumber(e.target.value)}
+                className="mt-1 w-full h-10 px-3 rounded-md border border-border bg-white text-[13px]"
+                placeholder="e.g. JD014600003"
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              className="h-9 px-3 rounded-md border border-border text-[13px]"
+              onClick={() => setFulfilOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!!busy || !service.trim()}
+              className="h-9 px-3 rounded-md bg-ink text-white text-[13px] font-medium disabled:opacity-50"
+              onClick={() => {
+                if (!service.trim()) {
+                  toast.error("Service is required.");
+                  return;
+                }
+                void run(
+                  "fulfil",
+                  async () => {
+                    await ordersAdminApi.fulfill(apiId, {
+                      carrier,
+                      service: service.trim(),
+                      trackingNumber: trackingNumber.trim() || null,
+                    });
+                    setFulfilOpen(false);
+                    setTrackingNumber("");
+                  },
+                  "Shipment created · order is preparing",
+                );
+              }}
+            >
+              Create shipment
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 space-y-5">
