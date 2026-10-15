@@ -120,9 +120,9 @@ export function AdminLedger() {
             <button
               onClick={reseed}
               className="h-9 px-3 rounded-md border border-black/10 bg-white text-[13px] inline-flex items-center gap-2 hover:bg-black/[0.04]"
-              title="Reload demo data"
+              title="Reload from API"
             >
-              <RefreshCw className="h-4 w-4" /> Reseed
+              <RefreshCw className="h-4 w-4" /> Refresh
             </button>
             <button
               onClick={exportJournal}

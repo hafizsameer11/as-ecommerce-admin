@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { inventoryAdminApi, warehousesAdminApi } from "@/lib/api/fulfilment";
 import { productsAdminApi } from "@/lib/api/products-admin";
 import { koboToNaira } from "@/lib/api/client";
-import { getAllProducts, type Product } from "./shop-data";
+import type { Product } from "./shop-data";
 
 export type Warehouse = { id: string; name: string; code: string; city: string };
 
@@ -23,7 +23,7 @@ export type StockRow = {
   reserved: number;
   reorderPoint: number;
   cost: number;
-  /** Optional display fields from API when shop-data has no match */
+  /** Display fields from inventory API */
   productName?: string;
   brand?: string;
   image?: string | null;
@@ -255,8 +255,6 @@ export function stockStateOf(r: StockRow): StockState {
 }
 
 export function productForRow(row: StockRow): Product | undefined {
-  const found = getAllProducts().find((p) => p.id === row.productId);
-  if (found) return found;
   if (!row.productName) return undefined;
   return {
     id: row.productId,

@@ -1,5 +1,17 @@
 import { create } from "zustand";
-import type { Review } from "./reviews";
+export type Review = {
+  id: string;
+  author: string;
+  initials: string;
+  rating: number;
+  title: string;
+  body: string;
+  date: string;
+  verified: boolean;
+  helpful: number;
+  size?: string;
+  fit?: "Runs small" | "True to size" | "Runs large";
+};
 import { ordersAdminApi } from "@/lib/api/orders";
 
 export type ReviewStatus = "pending" | "published" | "rejected" | "flagged";

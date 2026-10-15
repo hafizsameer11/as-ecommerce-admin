@@ -6,8 +6,7 @@ import { create } from "zustand";
 import type { Order, OrderStatus, OrderItem } from "@/components/account/ordersData";
 import type { CartItem } from "@/lib/cart-store";
 import type { CheckoutAddress, CheckoutContact, DeliveryMethod, PaymentMethod } from "@/lib/checkout-store";
-import { balanceFor, depositFor, getDropById } from "@/lib/coming-soon";
-import { formatCartSize, getProductById, getProductSizeLabel } from "@/lib/shop-data";
+import { formatCartSize } from "@/lib/shop-data";
 import { ordersAdminApi, koboToNaira, type AdminOrderRow } from "@/lib/api/orders";
 
 export type OrderReservation = {
@@ -63,25 +62,8 @@ type State = {
   payBalance: (id: string) => void;
 };
 
-function reservationFrom(items: CartItem[]): OrderReservation | undefined {
-  const dep = items.find((i) => i.productId.endsWith("-deposit"));
-  if (!dep) return undefined;
-  const dropId = dep.productId.replace(/-deposit$/, "");
-  const drop = getDropById(dropId);
-  if (!drop) return undefined;
-  const price = drop.product.price;
-  return {
-    dropId,
-    productId: drop.product.id,
-    productName: `${drop.product.brand} ${drop.product.name}`,
-    image: drop.product.image,
-    size: dep.size,
-    retail: price,
-    deposit: depositFor(price),
-    balance: balanceFor(price),
-    releaseAt: drop.releaseAt,
-    balancePaid: false,
-  };
+function reservationFrom(_items: CartItem[]): OrderReservation | undefined {
+  return undefined;
 }
 
 function normalizeStatus(s: string): OrderStatus {
@@ -234,15 +216,10 @@ export const useOrders = create<State>()((set, get) => ({
     const now = new Date();
     const status: OrderStatus = "Processing";
     const orderItems: OrderItem[] = items.map((i) => {
-      const product = i.productId ? getProductById(i.productId) : undefined;
-      const sizeLabel = i.size
-        ? product
-          ? getProductSizeLabel(product, i.size)
-          : formatCartSize(i.size)
-        : null;
+      const sizeLabel = i.size ? formatCartSize(i.size) : null;
       return {
         name: i.name,
-        brand: product?.brand,
+        brand: undefined,
         variant: `${i.variant}${sizeLabel ? ` · ${sizeLabel}` : ""}${i.color ? ` · ${i.color}` : ""}`,
         qty: i.qty,
         price: i.price,

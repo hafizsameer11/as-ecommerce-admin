@@ -1,7 +1,5 @@
 import { create } from "zustand";
 import { brandsAdminApi } from "@/lib/api/catalog-admin";
-import { shopProducts } from "./shop-data";
-
 export type BrandStatus = "active" | "draft" | "archived";
 export type BrandTier = "signature" | "core" | "emerging";
 
@@ -82,7 +80,7 @@ function toBody(b: Partial<Brand> & { name?: string }) {
 export function productCountForBrand(name: string): number {
   const hit = useBrands.getState().brands.find((b) => b.name.toUpperCase() === name.toUpperCase());
   if (hit && typeof hit.itemCount === "number") return hit.itemCount;
-  return shopProducts.filter((p) => p.brand.toUpperCase() === name.toUpperCase()).length;
+  return 0;
 }
 
 type State = {

@@ -38,26 +38,19 @@ type CheckoutState = {
 };
 
 const initialContact: CheckoutContact = {
-  email: "john.doe@email.com",
-  phone: "+234 801 234 5678",
-  subscribe: true,
+  email: "",
+  phone: "",
+  subscribe: false,
 };
 
 const initialAddress: CheckoutAddress = {
-  fullName: "John Doe",
-  address: "12 Admiralty Way",
+  fullName: "",
+  address: "",
   apartment: "",
-  city: "Lagos",
-  state: "Lagos State",
-  postal: "106104",
-  country: "Nigeria",
-};
-
-const COUPONS: Record<string, number> = {
-  ASL20OFF: 20,
-  WELCOME10: 10,
-  VIP30: 30,
-  APP10: 10,
+  city: "",
+  state: "",
+  postal: "",
+  country: "",
 };
 
 export const useCheckout = create<CheckoutState>()(
@@ -76,11 +69,8 @@ export const useCheckout = create<CheckoutState>()(
       applyCoupon: (raw) => {
         const code = raw.trim().toUpperCase();
         if (!code) return { ok: false, pct: 0, message: "Enter a coupon code" };
-        let pct = COUPONS[code];
-        if (!pct) {
-          const user = useMyCoupons.getState().find(code);
-          if (user) pct = user.pct;
-        }
+        const user = useMyCoupons.getState().find(code);
+        const pct = user?.pct;
         if (!pct) {
           set({ coupon: null, discountPct: 0 });
           return { ok: false, pct: 0, message: "Invalid coupon code" };

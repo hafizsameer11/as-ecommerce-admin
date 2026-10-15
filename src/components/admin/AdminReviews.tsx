@@ -140,7 +140,7 @@ export default function AdminReviews() {
               <Download className="h-4 w-4" /> Export
             </button>
             <button
-              onClick={() => { if (confirm("Reset reviews to seeded data?")) { reset(); toast.success("Reviews reset"); } }}
+              onClick={() => { if (confirm("Reload reviews from the API?")) { reset(); toast.success("Reviews reloaded"); } }}
               className="h-9 px-3 rounded-md border border-black/10 bg-white text-[13px] hover:bg-black/[0.04]"
             >
               Reset

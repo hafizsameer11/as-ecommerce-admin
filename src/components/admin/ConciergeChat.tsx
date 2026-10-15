@@ -5,7 +5,7 @@ import { Card, Chip, naira, statusTone } from "./ui";
 import { useConciergeRequests, type ConciergeRequest } from "@/lib/concierge-requests-store";
 import {
   useConciergeChat,
-  ensureSeedForRequest,
+  ensureThreadForRequest,
   CANNED_REPLIES,
   type ChatChannel,
 } from "@/lib/concierge-chat-store";
@@ -53,7 +53,7 @@ export function ConciergeChat() {
   useEffect(() => {
     requests
       .filter((r) => r.status !== "Cancelled")
-      .forEach((r) => ensureSeedForRequest(r.id, r.customer.name, r.brand, r.itemName));
+      .forEach((r) => ensureThreadForRequest(r.id));
   }, [requests]);
 
   const [query, setQuery] = useState("");
@@ -118,7 +118,6 @@ export function ConciergeChat() {
     if (!chat.activeId || !draft.trim()) return;
     chat.send(chat.activeId, draft.trim(), { channel, agent: "You" });
     setDraft("");
-    if (active) chat.simulateReply(active.req.id, active.req.customer.name);
   };
 
   return (

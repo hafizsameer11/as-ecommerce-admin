@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageHeader } from "@/components/admin/AdminShell";
 import { useActivity, type ActivityType } from "@/lib/admin-activity-store";
@@ -60,12 +60,9 @@ const FILTERS: { id: "all" | ActivityType; label: string }[] = [
 function ActivityPage() {
   const entries = useActivity((s) => s.entries);
   const hydrate = useActivity((s) => s.hydrate);
-  const push = useActivity((s) => s.push);
   const clear = useActivity((s) => s.clear);
   const [filter, setFilter] = useState<"all" | ActivityType>("all");
   const [live, setLive] = useState(false);
-  const pushRef = useRef(push);
-  pushRef.current = push;
 
   useEffect(() => {
     const type =
@@ -79,30 +76,21 @@ function ActivityPage() {
     void hydrate({ type });
   }, [hydrate, filter]);
 
-  const simulate = () => {
-    const pool: Parameters<typeof push>[0][] = [
-      { type: "order.placed", title: `Order ASL-ORD-${Math.floor(10250 + Math.random() * 999)} placed`, meta: "Web · Lagos", amount: Math.round(80000 + Math.random() * 400000) },
-      { type: "concierge.quoted", title: `Request R-${Math.floor(880 + Math.random() * 99)} quoted`, meta: "Balenciaga Triple S", amount: Math.round(500000 + Math.random() * 1500000) },
-      { type: "review.submitted", title: "New 5★ review · Rolex Datejust 41", meta: "Awaiting moderation" },
-      { type: "stock.low", title: "Low stock · Amiri Slides (UK 10)", meta: "2 left" },
-      { type: "catalog.updated", title: "Price updated · Creed Aventus 100ml", meta: "₦95,000 → ₦92,000" },
-      { type: "coupon.minted", title: `Coupon ASL10-${Math.random().toString(36).slice(2, 6).toUpperCase()} minted`, meta: "Rewards redemption" },
-    ];
-    pushRef.current(pool[Math.floor(Math.random() * pool.length)]);
-  };
-
   useEffect(() => {
     if (!live) return;
+    const type =
+      filter === "all"
+        ? undefined
+        : filter.startsWith("order.")
+          ? "order.*"
+          : filter.startsWith("concierge.")
+            ? "concierge.*"
+            : String(filter);
     const id = setInterval(() => {
-      const pool: Parameters<typeof push>[0][] = [
-        { type: "order.placed", title: `Order ASL-ORD-${Math.floor(10250 + Math.random() * 999)} placed`, meta: "Web · Lagos", amount: Math.round(80000 + Math.random() * 400000) },
-        { type: "review.submitted", title: "New 4★ review · Air Force 1 '07", meta: "Awaiting moderation" },
-        { type: "stock.low", title: "Low stock · Essentials Hoodie (M)", meta: "3 left" },
-      ];
-      pushRef.current(pool[Math.floor(Math.random() * pool.length)]);
-    }, 4000);
+      void hydrate({ type });
+    }, 8000);
     return () => clearInterval(id);
-  }, [live]);
+  }, [live, hydrate, filter]);
 
   const filtered = useMemo(
     () =>
@@ -136,9 +124,6 @@ function ActivityPage() {
             >
               <span className={`h-2 w-2 rounded-full ${live ? "bg-ink animate-pulse" : "bg-muted-foreground"}`} />
               {live ? "Live · streaming" : "Go live"}
-            </button>
-            <button onClick={simulate} className="h-9 px-3 rounded-md border border-border bg-white text-[12px] font-semibold hover:bg-black/5">
-              Simulate event
             </button>
             <button onClick={onReset} className="h-9 px-3 rounded-md bg-ink text-white text-[12px] font-semibold hover:bg-ink/90">
               Reset feed

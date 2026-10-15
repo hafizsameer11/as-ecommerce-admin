@@ -201,7 +201,7 @@ export const useConciergeChat = create<State>()((set, get) => ({
   },
 }));
 
-export function ensureSeedForRequest(id: string, _customer: string, _brand: string, _item: string) {
+export function ensureThreadForRequest(id: string) {
   useConciergeChat.getState().ensureThread(id);
 }
 

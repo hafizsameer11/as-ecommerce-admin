@@ -15,7 +15,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "sonner";
-import { useCatalogVersion } from "@/lib/catalog-version";
 
 function NotFoundComponent() {
   return (
@@ -142,20 +141,15 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  const catalogV = useCatalogVersion((s) => s.v);
-
   useEffect(() => {
     void import("@/lib/admin-role-store").then(({ useAdmin }) => useAdmin.getState().bootstrap());
-    void import("@/lib/catalog-hydrate").then(({ hydrateShopCatalogFromApi }) =>
-      hydrateShopCatalogFromApi().catch((err) => console.warn("[catalog]", err))
-    );
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={`${pathname}-${catalogV}`}
+          key={pathname}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
